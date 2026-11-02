@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LH Short Bot</title>
+<style>
+__APP_CSS__
+</style>
+</head>
+<body>
+<div id="app">
+<header>
+  <div class="brand" title="LH Short Bot"><i></i></div>
+  <div class="search">
+    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+    <input id="sym" list="recent" placeholder="Search symbol" autocomplete="off" spellcheck="false" maxlength="12">
+    <datalist id="recent"></datalist>
+  </div>
+  <div class="tfdd"><button id="tf-btn" title="Timeframe (keys 1-6)"><span id="tf-lab">1m</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+    <div id="tf-menu" class="hidden"><button data-tf="1">1 minute<kbd>1</kbd></button><button data-tf="2">2 minutes<kbd>2</kbd></button><button data-tf="5">5 minutes<kbd>3</kbd></button><button data-tf="15">15 minutes<kbd>4</kbd></button><button data-tf="30">30 minutes<kbd>5</kbd></button><button data-tf="D">1 day<kbd>6</kbd></button></div>
+  </div>
+  <div class="quote"><span id="q-sym"></span><button id="q-fav" title="Add to favorites" aria-label="Add to favorites"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-9-8.6C1.6 8.3 3.6 5 6.8 5c2 0 3.4 1.1 4.2 2.4h2C13.8 6.1 15.2 5 17.2 5c3.2 0 5.2 3.3 3.8 6.4C19 15.6 12 20 12 20z"/></svg></button><span id="q-name"></span><span id="q-last"></span><span id="q-chg"></span></div>
+  <div class="chips">
+    <span hidden><span class="chip" id="c-up"><b>Gap</b><span>-</span></span><span class="chip" id="c-off"><b>Off HOD</b><span>-</span></span><span class="chip" id="c-hod"><b>HOD</b><span>-</span></span></span>
+    <span class="chip" id="c-vwap"><b>VWAP</b><span>-</span></span>
+    <span class="chip" id="c-vol" title="Today's volume (premarket included)"><b>Vol</b><span>-</span></span>
+    <span class="chip halt" id="c-halt" title="IB reports a trading halt. The short limit cannot fill while the stock is halted.">HALTED</span>
+  </div>
+  <div class="spacer"></div>
+  <div class="acc" id="acc" title="TradeZero account">
+    <div><span>Equity</span><b id="a-eq">-</b></div>
+    <div id="acc-bp"><span>Buying power</span><b id="a-bp">-</b></div>
+    <div><span>Day P&amp;L</span><b id="a-pnl">-</b></div>
+    <div><span>Unrealized</span><b id="a-un">-</b></div>
+  </div>
+  <button class="pill connecting" id="conn" title="IB Gateway - click to reconnect"><i></i><span>Connecting</span></button>
+  <button class="kebab" id="menu-btn" title="Menu: switches, trading mode, panels, keys, connection">&#8942;</button>
+</header>
+<div id="body">
+<nav id="rail" aria-label="Screens">
+  <button class="rb" data-scr="fav" title="Favorites (F7)"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-9-8.6C1.6 8.3 3.6 5 6.8 5c2 0 3.4 1.1 4.2 2.4h2C13.8 6.1 15.2 5 17.2 5c3.2 0 5.2 3.3 3.8 6.4C19 15.6 12 20 12 20z"/></svg></button>
+  <button class="rb on" data-scr="chart" title="Chart (Esc)"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 5-6"/></svg></button>
+  <button class="rb" data-scr="scan" title="Scanner (F2)"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h6"/><circle cx="18" cy="16" r="3"/><path d="M20.2 18.2L22 20"/></svg></button>
+  <button class="rb" data-scr="journal" title="Journal (F3)"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M9 10h6M9 14h6"/></svg></button>
+  <button class="rb" data-scr="bt" title="Dashboard (F8)"><svg viewBox="0 0 24 24"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3"/><path d="M7.5 15h9"/></svg></button>
+  <button class="rb" data-scr="bot" title="Bot center (F4)"><svg viewBox="0 0 24 24"><rect x="6" y="8" width="12" height="10" rx="2"/><path d="M12 4v4M9.5 13h.01M14.5 13h.01"/></svg></button>
+  <div class="rsp"></div>
+  <button class="rb" data-scr="set" title="Settings (F6)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+</nav>
+<div id="stage">
+<main id="main">
+  <div id="leftcol">
+  <section id="chartwrap">
+    <div id="chart"></div>
+    <div id="legend"></div>
+    <button id="golive" title="Jump to the latest candle">Go to realtime &#8677;</button>
+    <div id="hist-note" class="hidden">Loading older candles...</div>
+    <div id="banner" class="hidden"></div>
+    <div id="toast" class="hidden"></div>
+    <div id="loading" class="ov hidden"><div class="ov-box"><div class="spin"></div><div class="big" id="ld-sym"></div><div class="sub" id="ld-text"></div></div></div>
+    <div id="empty" class="ov"><div class="ov-box">
+      <div class="big">Search a symbol</div>
+      <div class="sub">Type a ticker and press <kbd>Enter</kbd> - you can just start typing anywhere.<br>
+      The chart loads one week of 1-minute candles from IB Gateway and marks every short signal of the strategy.<br>
+      The bot trades only the tickers in the watchlist on the left (Auto-trade switch on).</div>
+    </div></div>
+  </section>
+  <div id="osplit" class="split" title="Drag to resize the chart / orders - double-click to reset"></div>
+  <section id="orders">
+    <div class="oh"><button class="otab" id="tab-pos" title="Open positions (bot shorts and premarket longs) and today's closed trades">Positions<b id="pos-n"></b></button><button class="otab on" id="tab-ord" title="TradeZero orders: pending and filled">Orders</button><button class="otab" id="tab-long" title="Premarket long bot (05:00-09:00 ET): active and closed trades">Premarket long<b id="lt-n"></b></button><button class="otab" id="tab-loc" title="Locate shares yourself (TradeZero's offers, $ per share, total) - and today's located shares">Locates<b id="lc-badge"></b></button><button class="otab" id="tab-alr" title="Price alerts: Alt + click on the chart, or add one here">Alerts<b id="al-n"></b></button>
+      <span class="obadge o-ord" id="o-bp">Pending <b>0</b></span><span class="obadge o-ord" id="o-bf">Filled <b>0</b></span>
+      <span class="m o-ord" id="o-meta">TradeZero not connected</span>
+      <label class="tgl o-ord" title="Also list cancelled / rejected orders on the right"><input type="checkbox" id="o-all"><span class="sw"></span><span>Cancelled</span></label>
+      <span class="lstate o-lng" id="l-state">-</span><span class="m o-lng" id="l-meta"></span>
+      <label class="tgl o-lng" title="ON = the premarket long bot scans and trades on weekdays (05:00-09:00 ET). OFF = no new scans or entries; open longs keep their exits."><input type="checkbox" id="l-on"><span class="sw"></span><span>Long bot</span></label>
+      <span class="m o-loc" id="lc-meta">Your locates: no price cap. The bot's own: max <b id="lc-cap">5</b>% of the price a share.</span>
+      <button class="iconbtn" id="o-tog" title="Hide / show the orders panel">&#9660;</button></div>
+    <div class="obody o-pos" id="pos-body">
+      <div class="ocol">
+        <div class="och">Open <b id="p-no">0</b><span class="hint">Cover / Sell = close at market (click twice)</span></div>
+        <div class="ohd pgrid"><span>Symbol</span><span>Side</span><span class="r">Qty</span><span class="r">Avg</span><span class="r">Last</span><span class="r">Unrealized</span><span class="r">Stop</span><span class="r">In</span><span>Strategy</span><span></span></div>
+        <div class="olist p-half" id="p-open"></div>
+        <div class="och">Closed today <b id="p-nc">0</b><span class="hint" id="p-tot"></span></div>
+        <div class="ohd pgrid2"><span>Symbol</span><span>Side</span><span class="r">Qty</span><span class="r">Avg</span><span class="r">Exit</span><span class="r">P&amp;L</span><span class="r">In</span><span>Strategy / result</span></div>
+        <div class="olist p-half" id="p-cls"></div>
+      </div>
+    </div>
+    <div class="obody o-ord">
+      <div class="ocol">
+        <div class="och">Pending <b id="o-np">0</b><span class="hint">click a price to change it</span></div>
+        <div class="ohd ogp"><span>Time</span><span>Symbol</span><span>Side</span><span class="o-ty">Type</span><span class="r">Qty</span><span class="r">Price</span><span class="o-by">By</span><span></span></div>
+        <div class="olist" id="o-pend"></div>
+      </div>
+      <div class="odiv"></div>
+      <div class="ocol">
+        <div class="och">Filled today <b id="o-nf">0</b></div>
+        <div class="ohd ogf"><span>Time</span><span>Symbol</span><span>Side</span><span class="r">Qty</span><span class="r">Avg</span><span class="o-ty">Type</span><span class="o-by">By</span></div>
+        <div class="olist" id="o-fill"></div>
+      </div>
+    </div>
+    <div class="obody o-lng" id="l-body">
+      <div class="ocol">
+        <div class="och">Active <b id="l-na">0</b><span class="hint" id="l-hint">every long is sold by 09:00</span></div>
+        <div class="ohd lga"><span>In</span><span>Symbol</span><span>Setup</span><span class="r">Shares</span><span class="r">Entry</span><span class="r">Last</span><span class="r">Stop</span><span class="r">P&amp;L</span><span></span></div>
+        <div class="olist" id="l-act"></div>
+      </div>
+      <div class="odiv"></div>
+      <div class="ocol">
+        <div class="och">Closed today <b id="l-nc">0</b><span class="hint" id="l-tot"></span></div>
+        <div class="ohd lgc"><span>In</span><span>Symbol</span><span class="r">Shares</span><span class="r">Entry</span><span class="r">Exit</span><span>Result</span><span class="r">P&amp;L</span></div>
+        <div class="olist" id="l-cls"></div>
+      </div>
+    </div>
+    <div class="obody o-loc" id="lc-body">
+      <div class="ocol">
+        <div class="och">Get a locate<span class="hint" id="lc-hint"></span></div>
+        <div class="lcform"><input id="lc-sym" placeholder="Symbol" maxlength="12" spellcheck="false" autocomplete="off"><input id="lc-qty" placeholder="Shares" inputmode="numeric" autocomplete="off"><button class="sbtn pri" id="lc-go">Get prices</button><button class="sbtn" id="lc-x" title="Cancel this request">Cancel</button></div>
+        <div class="lcmsg" id="lc-msg"></div>
+        <div class="ohd lco"><span>Type</span><span class="r">$ / share</span><span class="r">Total</span><span class="r">% of price</span><span class="r">Good for</span><span></span></div>
+        <div class="olist" id="lc-offers"></div>
+      </div>
+      <div class="odiv"></div>
+      <div class="ocol">
+        <div class="och">Located in the account <b id="lc-ni">0</b><span class="hint" id="lc-at"></span><button class="sbtn mini" id="lc-ref" title="Read TradeZero's locate inventory again">Refresh</button></div>
+        <div class="ohd lci"><span>Symbol</span><span class="r">Available</span><span>Type</span></div>
+        <div class="olist lc-half" id="lc-inv"></div>
+        <div class="och">Bought today <b id="lc-nb">0</b><span class="hint" id="lc-spent"></span></div>
+        <div class="ohd lcb"><span>Time</span><span>Symbol</span><span class="r">Shares</span><span class="r">$ / share</span><span class="r">Total</span><span>Type</span><span>By</span></div>
+        <div class="olist lc-half" id="lc-rows"></div>
+      </div>
+    </div>
+    <div class="obody o-alr" id="al-body">
+      <div class="ocol">
+        <div class="och">Price alerts <b id="al-no">0</b><span class="hint">Alt + click on the chart sets one there - it fires once (sound + Discord) while the stock is on the chart or the watchlist</span></div>
+        <div class="alform"><input id="al-sym" placeholder="Symbol" maxlength="12" spellcheck="false" autocomplete="off"><input id="al-px" placeholder="Price" inputmode="decimal" autocomplete="off"><button class="sbtn pri" id="al-go">Add alert</button></div>
+        <div class="ohd algrid"><span>Symbol</span><span>When</span><span class="r">Last</span><span>Set</span><span></span></div>
+        <div class="olist" id="al-list"></div>
+      </div>
+    </div>
+  </section>
+  </div>
+  <div id="vsplit" class="split" title="Drag to resize the chart / side panel - double-click to reset"></div>
+  <aside id="side">
+    <section id="bot-sec">
+      <div class="sh"><span class="t">Watchlist</span><span class="tchip" id="trade-chip" title="Auto-trade and the trading mode of every strategy (menu)"><i></i><span>-</span></span></div>
+      <div id="bot-warn"></div>
+      <div class="acct" id="acct" hidden></div>
+      <div class="wl-add"><input id="wl-in" placeholder="Add ticker + Enter" maxlength="12" spellcheck="false" autocomplete="off">
+        <button class="sbtn" id="wl-btn">Add</button>
+        <button class="sbtn danger" id="flat-btn" title="Cancel every bot order and cover every bot short now">Flatten all</button></div>
+      <div class="scan-head wgrid"><span>Symbol</span><span style="text-align:right">Last</span><span style="text-align:right">Gap</span><span>Bot status</span><span></span></div>
+      <div id="wl-list"><div class="empty-sig">Add the tickers the bot should watch.</div></div>
+    </section>
+    <div id="hsplit" class="split" title="Drag to resize the watchlist / scanner - double-click to reset"></div>
+    <section id="scan-sec">
+      <div class="sh"><span class="t">Scanner</span><span class="m" id="ms-meta">-</span></div>
+      <div class="scan-head mscan"><span>Symbol</span><span>Last</span><span>% Up</span></div>
+      <div id="ms-list"><div class="empty-sig">Waiting for the scanner...</div></div>
+    </section>
+    <div id="drawer" class="hidden">
+      <div class="dh"><button class="dt" data-dt="sig">Signals<b id="d-sig"></b></button><button class="dt" data-dt="log">Bot log</button>
+        <button class="dt" data-dt="skip">Skipped<b id="d-skip"></b></button><button class="dx" id="d-x" title="Close">&#10005;</button></div>
+      <section class="dp" id="dp-sig">
+        <div class="ph"><div class="t"><span>Signals</span><span id="p-sym" style="color:var(--muted);font-weight:500"></span></div>
+          <div class="st" id="p-stats">No symbol loaded</div></div>
+        <div id="sig-list"></div>
+      </section>
+      <section class="dp" id="dp-log"><div id="botlog"></div></section>
+      <section class="dp" id="dp-skip"><div class="skip-h" id="skip-sum">Skipped signals (0)</div><div id="skip-list"></div></section>
+    </div>
+  </aside>
+</main>
+<section class="screen" id="scr-scan" aria-label="Scanner">
+  <div class="sch"><span class="st">Scanner</span><span class="sm" id="sc-meta">-</span><div class="spacer"></div>
+    <span class="sm">Up at least</span><div class="seg2" id="sc-up"><button data-v="30">30%</button><button data-v="50">50%</button><button data-v="100">100%</button><button data-v="150">150%</button></div>
+    <span class="sm">Price from</span><div class="seg2" id="sc-px"><button data-v="0.5">$0.50</button><button data-v="1">$1</button><button data-v="2">$2</button></div></div>
+  <div class="scb">
+    <div class="sct"><div class="scgrid sch2"><span>#</span><span>Symbol</span><span class="r">Last</span><span class="r">Change</span><span class="r">Volume</span><span class="r">$ Volume</span><span class="r">Vol / avg</span><span class="r">From high</span><span>Bot</span><span></span></div>
+      <div class="sclist" id="sc-list"></div></div>
+    <aside class="scd" id="sc-det"></aside>
+  </div>
+</section>
+<section class="screen" id="scr-journal" aria-label="Journal">
+  <div class="sch"><span class="st">Journal</span><div class="seg2" id="jr-rng"><button data-v="today">Today</button><button data-v="week">Week</button><button data-v="month">Month</button><button data-v="all">All</button></div>
+    <span class="sm" id="j-meta"></span><div class="spacer"></div><span class="sm" id="j-src">From the bot's trade journals - real fills</span><button class="sbtn" id="jr-csv">Export CSV</button></div>
+  <div class="jbody">
+    <div class="jkpi" id="j-kpi"></div>
+    <div class="jrow"><div class="jcard" id="j-cal"></div><div class="jcard"><div class="jt">Equity <span class="sm">cumulative P&amp;L, trade by trade</span></div><svg id="j-eq" viewBox="0 0 800 240"></svg></div></div>
+    <div class="jrow"><div class="jcard" id="j-strat"></div><div class="jcard"><div class="jt">Trades <span class="sm">newest first - click a symbol for its chart</span></div><div class="jtl" id="j-trades"></div></div></div>
+  </div>
+</section>
+<section class="screen" id="scr-bot" aria-label="Bot center">
+  <div class="sch"><span class="st">Bot center</span><span class="tchip" id="bc-chip"><i></i><span>-</span></span><span class="sm" id="bc-meta"></span><div class="spacer"></div>
+    <button class="sbtn danger" id="bc-pause">Pause new entries</button></div>
+  <div class="bcb">
+    <div class="bccards" id="bc-cards"></div>
+    <div class="bcrow2"><div class="jcard"><div class="jt">Event feed <div class="seg2" id="bc-ft"><button data-v="all">All</button><button data-v="trade">Trades</button><button data-v="warn">Warnings</button></div></div><div class="bcfeed" id="bc-feed"></div></div>
+      <div class="jcard" id="bc-health"></div></div>
+  </div>
+</section>
+<section class="screen" id="scr-bt" aria-label="Dashboard">
+  <div class="sch"><span class="st">Dashboard</span><span class="sm" id="bt-meta"></span><div class="spacer"></div></div>
+  <div class="btwrap">
+    <nav class="btnav" id="bt-strats" aria-label="Strategies"></nav>
+    <div class="btmain">
+      <div class="btv on" id="btv-run">
+        <div style="display:flex;align-items:flex-end;gap:12px"><div style="flex:1"><div style="font-size:19px;font-weight:700" id="bt-sname">-</div>
+</div>
+          <button class="sbtn pri" id="bt-go" style="height:36px;padding:0 20px;font-size:14px">Run backtest</button>
+          <button class="sbtn danger hidden" id="bt-stop" style="height:36px">Stop</button></div>
+        <div class="btcard hidden" id="bt-progc"><div class="bth" id="bt-progt">Running...</div><div class="btprog"><i id="bt-progb" style="width:0%"></i></div></div>
+        <button class="btfold" id="bt-fold" aria-expanded="false"><span class="btcar">&#9656;</span> Run settings <span class="sm" id="bt-foldsum"></span></button>
+        <div class="btgrid3 hidden" id="bt-setc">
+          <div class="btcard"><div class="bth">Days</div>
+            <label class="btf">From<input class="btin" id="bt-from" placeholder="YYYY-MM-DD"></label>
+            <label class="btf">To<input class="btin" id="bt-to" placeholder="YYYY-MM-DD"></label>
+            <label class="btf">Day list<select class="btin" id="bt-days"><option value="all">All days</option><option value="fav">Favorites</option><option value="list">List</option></select></label>
+            <label class="btf hidden" id="bt-listw">List<input class="btin" id="bt-list"></label></div>
+          <div class="btcard"><div class="bth">Costs and size</div>
+            <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 10px">
+            <label class="btf">Locate % (shorts)<input class="btin" id="bt-loc"></label><label class="btf">Slippage % per fill<input class="btin" id="bt-slip"></label>
+            <label class="btf">Start balance<input class="btin" id="bt-bal"></label><label class="btf">% of account per trade<input class="btin" id="bt-cp"></label>
+            <label class="btf">Max short $<input class="btin" id="bt-cm"></label><label class="btf">Max long $<input class="btin" id="bt-cml"></label></div></div>
+          <div class="btcard"><div class="bth">Run</div>
+            <label class="btf">Workers<input class="btin" id="bt-procs"></label></div>
+        </div>
+        <div class="btcard btruns"><div class="bth">Past runs</div><div id="bt-runs"></div></div>
+      </div>
+      <div class="btv" id="btv-res">
+        <div style="display:flex;align-items:center;gap:10px"><button class="sbtn" data-btback="run">&lsaquo; Runs</button><b id="bt-rtitle" style="font-size:15px"></b><span class="sm" id="bt-rsub"></span></div>
+        <div class="btkpi" id="bt-kpi"></div>
+        <div style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:12px">
+          <div class="btcard"><div class="bth">Account P&amp;L, compounding <span class="sm" id="bt-eqs"></span></div><svg id="bt-eq" viewBox="0 0 600 170" preserveAspectRatio="none" style="width:100%;height:170px"></svg></div>
+          <div class="btcard btbrk"><div class="bth">Breakdown <div class="seg2" id="bt-by"><button data-v="halves" class="on">Halves</button><button data-v="setup">Setup</button><button data-v="hour">Hour</button><button data-v="month">Month</button><button data-v="price">Price</button><button data-v="result">Exit</button></div></div><div id="bt-brk"></div></div>
+        </div>
+        <div class="btcard bttr"><div class="bth">Trades<div class="spacer"></div>
+          <div class="seg2" id="bt-tf"><button data-v="all" class="on">All</button><button data-v="win">Wins</button><button data-v="loss">Losses</button><button data-v="note">With notes</button></div></div><div id="bt-trades"></div></div>
+      </div>
+      <div class="btv" id="btv-tr">
+        <div style="display:flex;align-items:center;gap:10px"><button class="sbtn" data-btback="res">&lsaquo; Results</button><b id="bt-ttitle" style="font-size:15px"></b><span class="sm" id="bt-tsub"></span><div class="spacer"></div>
+          <button class="sbtn" id="bt-prev">&lsaquo; Prev</button><button class="sbtn" id="bt-next">Next &rsaquo;</button></div>
+        <div class="bttrade">
+          <div class="btcol"><div id="bt-chart"></div><div id="bt-daily"></div></div>
+          <aside class="btside">
+            <div class="btfacts" id="bt-facts"></div>
+            <div class="mh" style="padding:4px 0 0">YOUR VERDICT</div>
+            <div class="btverd" id="bt-verd"><button data-vd="Good trade">Good trade</button><button data-vd="Bad entry">Bad entry</button><button data-vd="Would skip">Would skip</button><button data-vd="Better entry higher">Better entry higher</button></div>
+            <div class="mh" style="padding:4px 0 0">NOTE FOR THIS CHART</div>
+            <textarea id="bt-ntext" placeholder="Why was this a good or bad entry? Where would you have shorted?"></textarea>
+            <div class="sm" id="bt-pin">Click the chart to pin the note to a candle (optional).</div>
+            <div style="display:flex;gap:8px"><button class="sbtn pri" id="bt-nsave" style="flex:1;height:32px">Save note</button></div>
+            <div class="mh" style="padding:4px 0 0">SAVED NOTES ON THIS CHART</div>
+            <div id="bt-notes" style="display:flex;flex-direction:column;gap:6px"></div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="screen" id="scr-fav" aria-label="Favorites">
+  <div class="sch"><span class="st">Favorites</span><span class="sm" id="fv-meta">Tickers you keep - multi-day runners and more</span><div class="spacer"></div>
+    <div class="fvadd"><input id="fv-in" placeholder="Ticker" autocomplete="off" spellcheck="false"><button class="sbtn pri" id="fv-add">Add</button></div></div>
+  <div class="fvhead fvgrid"><span>#</span><span>Symbol</span><span style="text-align:right">Last</span><span>Added</span><span></span><span></span></div>
+  <div class="fvb" id="fv-list"></div>
+</section>
+<section class="screen" id="scr-set" aria-label="Settings">
+  <nav class="setnav" id="set-nav" aria-label="Settings sections">
+    <div class="snh">Settings</div>
+    <button data-sec="trading" class="on">Trading</button>
+    <button data-sec="sig">Signals <span class="cnt" id="s-sig"></span></button>
+    <button data-sec="skip">Skipped signals <span class="cnt" id="s-skip"></span></button>
+    <button data-sec="log">Bot log</button>
+    <button data-sec="hotkeys">Hotkeys</button>
+    <button data-sec="env">Keys and Discord</button>
+    <button data-sec="conn">Connection</button>
+    <button data-sec="colors">Colors</button>
+  </nav>
+  <div class="setbody">
+    <section class="setsec on" id="set-trading"><div class="seth">Trading</div></section>
+    <section class="setsec" id="set-sig"><div class="seth">Signals</div></section>
+    <section class="setsec" id="set-skip"><div class="seth">Skipped signals</div></section>
+    <section class="setsec" id="set-log"><div class="seth">Bot log</div></section>
+    <section class="setsec" id="set-hotkeys"></section>
+    <section class="setsec" id="set-env"><div class="seth">Keys and Discord</div>
+      <div id="set-env-box"></div>
+      <div class="kbox setvault"><div class="kt">Data vault</div>
+        <label>Location<input id="bt-vault" autocomplete="off" spellcheck="false"></label>
+        <div class="kbtns"><button class="sbtn pri" id="bt-vset">Save</button></div></div></section>
+    <section class="setsec" id="set-colors"><div class="seth">Colors</div>
+      <div class="colgrid" id="col-grid"></div>
+      <div style="display:flex;gap:8px;padding:12px 20px"><button class="sbtn pri" id="col-save">Save colors</button><button class="sbtn" id="col-reset">Reset to default</button></div></section>
+    <section class="setsec" id="set-conn"><div class="seth">Connection</div></section>
+  </div>
+</section>
+<section class="screen" id="scr-keys" aria-label="Hotkeys">
+  <div class="sch"><span class="st">Hotkeys</span><span class="sm">They act on the symbol of the open chart.</span><div class="spacer"></div>
+    <label class="tgl" title="Cover / sell / cancel / flatten keys and Ctrl + click stops"><input type="checkbox" id="hk-on"><span class="sw"></span><span>Order hotkeys</span></label>
+    <button class="sbtn" id="hk-reset">Reset to default</button></div>
+  <div class="hkb" id="hk-list"></div>
+  <div class="hkf">Order keys (cover, sell, cancel, flatten, Ctrl + click stop) work only while <b>Order hotkeys</b> is on - it is off until you switch it on. They act at once (F9 asks twice) and do exactly what the buttons do. Click <b>Change</b>, then press the new key (Esc = keep the old one). Live trading stays locked unless ALLOW_LIVE_TRADING = True.</div>
+</section>
+</div>
+</div>
+<div id="keys-ov" class="kov hidden"><div class="kbox">
+  <div class="kt">TradeZero API keys</div>
+  <b id="k-file" hidden></b>
+  <label>Public key (Key ID)<input id="k-id" autocomplete="off" spellcheck="false"></label>
+  <label>Secret<input id="k-sec" type="password" autocomplete="off" spellcheck="false" placeholder="leave empty to keep the saved secret"></label>
+  <label>Account ID (optional)<input id="k-acc" autocomplete="off" spellcheck="false" placeholder="empty = the first account of these keys"></label>
+  <div class="kst" id="k-st"></div>
+  <div class="kbtns"><button class="sbtn pri" id="k-save">Save and connect</button></div>
+  <hr>
+  <div class="kt">Discord notifications</div>
+  <label>Webhook URL<input id="d-url" type="password" autocomplete="off" spellcheck="false" placeholder="leave empty to keep the saved webhook"></label>
+  <label>Ping on urgent messages<input id="d-men" autocomplete="off" spellcheck="false" placeholder="@everyone, <@your user id> or empty"></label>
+  <div class="kst" id="d-st"></div>
+  <div class="kbtns"><button class="sbtn" id="k-cancel">Close</button><button class="sbtn" id="d-test">Save and send test</button><button class="sbtn pri" id="d-save">Save</button></div>
+</div></div>
+<div id="stop-ov" class="kov hidden"><div class="kbox">
+  <div class="kt" id="s-title">Move the stop</div>
+  <div class="ks" id="s-sub"></div>
+  <label>New stop price<input id="s-px" autocomplete="off" spellcheck="false" inputmode="decimal"></label>
+  <div class="kst" id="s-st"></div>
+  <div class="kbtns"><button class="sbtn" id="s-cancel">Cancel</button><button class="sbtn pri" id="s-save">Move stop</button></div>
+</div></div>
+<div id="close-ov" class="kov hidden"><div class="kbox">
+  <div class="kt">Positions are open - close them first?</div>
+  <div class="ks cl-list" id="cl-list"></div>
+  <div class="ks"><b>Yes</b> = cancel the stop orders and close every position now at market, then the app closes.<br>
+  <b>No</b> = leave the stop orders at TradeZero, keep the positions open and close the app.<br>
+  <b>Cancel</b> = keep the app open.</div>
+  <div class="kst" id="cl-st"></div>
+  <div class="kbtns"><button class="sbtn" id="cl-cancel">Cancel</button><button class="sbtn" id="cl-no">No - keep them</button><button class="sbtn danger" id="cl-yes">Yes - close them</button></div>
+</div></div>
+</div>
+<div id="ctxm" class="hidden" role="menu"></div>
+<div id="menu" class="hidden">
+  <div class="mh">SWITCHES</div>
+  <label class="tgl mt auto" id="auto-wrap" title="ON = the bot places orders at TradeZero for the watchlist"><input type="checkbox" id="t-auto"><span class="sw"></span><span>Auto-trade</span></label>
+  <label class="tgl mt" title="Show pre-market and after-hours candles"><input type="checkbox" id="t-ext" checked><span class="sw"></span><span>Ext hours</span></label>
+  <label class="tgl mt" title="Beep on new short signals and covers"><input type="checkbox" id="t-sound" checked><span class="sw"></span><span>Sound</span></label>
+  <input type="checkbox" id="t-skip" hidden>
+  <div class="md"></div><div class="mh">TRADING MODE</div>
+  <div id="modes"></div>
+  <div class="md"></div><div class="mh">PANELS</div>
+  <button class="mi" data-panel="sig">Signals<span class="cnt" id="m-sig"></span><span class="arr">&rsaquo;</span></button>
+  <button class="mi" data-panel="log">Bot log<span class="arr">&rsaquo;</span></button>
+  <button class="mi" data-panel="skip">Skipped signals<span class="cnt" id="m-skip"></span><span class="arr">&rsaquo;</span></button>
+  <button class="mi" data-panel="keys">Keys and Discord (.env)<span class="arr">&rsaquo;</span></button>
+  <button class="mi" data-panel="hotkeys">Hotkeys<span class="arr">&rsaquo;</span></button>
+  <div class="md"></div><div class="mh">CONNECTION</div>
+  <div class="mconn">
+    <span id="f-status">Starting...</span>
+    <div class="tzbar"><span class="pill2" id="tz-pill"><i></i><span id="tz-text">TradeZero: not connected</span></span>
+      <span class="pill2" id="dc-pill" title="Discord notifications"><i></i><span id="dc-text">Discord: not set</span></span>
+      <button class="sbtn" id="tz-keys" title="TradeZero API keys and the Discord webhook" hidden>Keys</button></div>
+    <div class="mdim"><span id="f-upd"></span> &middot; <span id="f-clock"></span></div>
+    <div class="mdim" id="f-info"></div>
+  </div>
+</div>
+__LWC_SCRIPT__
+<script>
+__APP_JS__
+</script>
+</body>
+</html>

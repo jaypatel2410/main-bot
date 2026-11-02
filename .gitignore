@@ -1,0 +1,33 @@
+# secrets - never pushed
+.env
+*.env
+!.env.example
+tradezero.json
+discord.json
+
+# Python / build
+__pycache__/
+*.pyc
+.venv/
+build/
+dist/
+installer/
+*.spec
+*.exe
+
+# data and large / local files
+*.db
+*.db-wal
+*.db-shm
+*.log
+*.log.*
+lightweight-charts-*.js
+backtest/settings.json
+backtest/*/runs/
+backtest/*/cache.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
