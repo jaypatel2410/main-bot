@@ -122,9 +122,33 @@
       $('k-st').textContent = r.hasSecret ? 'Secret saved' : 'No keys saved yet';
     });
     dcLoad();
+    api('turso_keys').then(t => { t = t || {}; if (document.activeElement !== $('t-url')) $('t-url').value = t.url || ''; $('t-tok').placeholder = t.hasToken ? 'a token is saved - leave empty to keep it' : 'paste the auth token'; });
+    cloudStatus();
     api('bt_list').then(r => { if (r && r.ok && document.activeElement !== $('bt-vault')) $('bt-vault').value = r.vault || ''; });   // 3.13.1: vault location
   }
   $('tz-keys').addEventListener('click', () => openSettings('env'));
+  // 3.14: Turso status line (header pill + the line in Settings) and its credentials
+  function cloudStatus(){
+    api('turso_status').then(s => {
+      s = s || {};
+      const p = $('cloud'), ago = s.last_ok == null ? '' : s.last_ok < 90 ? `${s.last_ok}s ago` : `${Math.round(s.last_ok / 60)} min ago`;
+      p.className = 'pill' + (s.state === 'ok' ? ' connected' : s.state === 'error' ? ' disconnected' : '');
+      p.querySelector('span').textContent = s.state === 'ok' ? 'Cloud synced' : s.state === 'error' ? 'Cloud offline' : 'Cloud off';
+      p.title = s.state === 'ok' ? `Turso ${s.host} - last contact ${ago || 'just now'}${s.pending ? `, ${s.pending} change(s) waiting` : ''}`
+        : s.state === 'error' ? `Turso: ${s.error || 'not reachable'} - this PC keeps working with its own copy` : 'Turso is not set up - Settings > Keys and Discord';
+      $('t-st').textContent = s.state === 'ok' ? `Connected to ${s.host} - last contact ${ago || 'just now'}${s.pending ? `, ${s.pending} change(s) waiting` : ''}`
+        : s.state === 'error' ? `Not connected: ${s.error || 'not reachable'}` : 'Not set up - this PC uses its own files only';
+    });
+  }
+  $('cloud').addEventListener('click', () => openSettings('env'));
+  $('t-save').addEventListener('click', () => {
+    $('t-st').textContent = 'Connecting...';
+    api('turso_save', $('t-url').value.trim(), $('t-tok').value.trim()).then(r => {
+      if (r && r.ok) { $('t-tok').value = ''; toast({kind: 'info', text: 'Turso saved - restart the app once to load your cloud data'}); setTimeout(cloudStatus, 2500); }
+      else $('t-st').textContent = (r && r.error) || 'Could not save';
+    });
+  });
+  setInterval(cloudStatus, 15000); whenApi(() => setTimeout(cloudStatus, 1500));
   function dcLoad(){
     api('discord_keys').then(d => {
       d = d || {};

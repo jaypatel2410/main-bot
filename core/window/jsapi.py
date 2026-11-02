@@ -286,6 +286,42 @@ class JsApi:
                               quick=True, tag="TEST MESSAGE", username=DISCORD_NAME_SYSTEM)
         return {"ok": ok, "error": "" if ok else f"Discord said: {msg}"}
 
+    # ---- 3.14: Turso (the cloud database): status line + the credentials in Settings > Keys and Discord ----
+    def turso_status(self):
+        try:
+            import turso
+            return {"ok": True, **turso.status()}
+        except Exception as exc:
+            return {"ok": False, "state": "error", "error": str(exc)}
+
+    def turso_keys(self):
+        url = env_get("TURSO_DATABASE_URL", "")
+        return {"url": url, "hasToken": bool(env_get("TURSO_AUTH_TOKEN", "")), "file": env_path()}
+
+    def turso_save(self, url, token):
+        url = str(url or "").strip()
+        token = str(token or "").strip()
+        if url and not url.startswith(("libsql://", "https://", "file:")):
+            return {"ok": False, "error": "The URL starts with libsql:// (Turso dashboard -> your database)"}
+        upd = {"TURSO_DATABASE_URL": url}
+        if token:                                        # empty box = keep the saved token
+            upd["TURSO_AUTH_TOKEN"] = token
+        try:
+            path = env_write(upd)
+        except Exception as exc:
+            return {"ok": False, "error": f"Could not save: {exc}"}
+        import threading
+        import turso
+        turso.reset()
+        os.environ.pop("TURSO_DATABASE_URL", None)
+        os.environ.pop("TURSO_AUTH_TOKEN", None)
+
+        def go():                                        # connect, then upload / merge the settings (off the window thread)
+            if turso.cloud() is not None:
+                self._settings._cloud_load()
+        threading.Thread(target=go, daemon=True, name="turso-connect").start()
+        return {"ok": True, "file": path}
+
     def tz_keys(self):
         cfg = tz_load_keys()
         kid = cfg.get("api_key_id", "")
@@ -386,14 +422,48 @@ class JsApi:
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 
-    def bt_run(self, k, cfg=None):
+    def bt_cards(self):
+        """3.14: the Backtest page: every strategy as a card (its one run, the new vault days waiting for it)."""
+        try:
+            B = self._btm()
+            st = B.settings()
+            j = self._bt_job()
+            favs = [f.get("sym") for f in (self._settings.get("favorites", []) or []) if isinstance(f, dict)]
+            return {"ok": True, "strats": B.cards(favs), "vault": st.get("vault", ""), "vinfo": B.vault_info(st.get("vault", "")),
+                    "last": st.get("last_cfg") or B.DEFAULT_CFG,
+                    "running": {"k": j["k"], "rid": j["rid"]} if j and j["proc"] is not None and j["proc"].is_alive() else None}
+        except Exception as exc:
+            log.exception("bt_cards")
+            return {"ok": False, "error": str(exc)}
+
+    def bt_update(self, k):
+        """3.14: run only the vault days the strategy's run has not covered yet; the run and its P&L are replaced by the
+        updated one. Nothing to do = answers at once."""
+        try:
+            B = self._btm()
+            favs = [f.get("sym") for f in (self._settings.get("favorites", []) or []) if isinstance(f, dict)]
+            j = self._bt_job()
+            if j and j["proc"] is not None and j["proc"].is_alive():
+                return {"ok": False, "error": "A backtest is already running"}
+            new, total = B.pending(str(k), favs)
+            if new == 0:
+                return {"ok": True, "uptodate": True, "n": 0, "total": total}
+            r = self.bt_run(k, None, True)
+            r["new"] = new
+            r["total"] = total
+            return r
+        except Exception as exc:
+            log.exception("bt_update")
+            return {"ok": False, "error": str(exc)}
+
+    def bt_run(self, k, cfg=None, update=False):
         try:
             j = self._bt_job()
             if j and j["proc"] is not None and j["proc"].is_alive():
                 return {"ok": False, "error": "A backtest is already running - stop it first"}
             B = self._btm()
             favs = [f.get("sym") for f in (self._settings.get("favorites", []) or []) if isinstance(f, dict)]
-            path, rid, n = B.new_job(str(k), dict(cfg or {}), favs)
+            path, rid, n = B.new_job(str(k), dict(cfg or {}), favs, bool(update))
             import multiprocessing as mp
             proc = mp.get_context("spawn").Process(target=B.run_job, args=(path,), daemon=True, name="lh-backtest")
             proc.start()

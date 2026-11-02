@@ -39,8 +39,8 @@ log = logging.getLogger("lh_app")
 # -----------------------------------------------------------------------------
 ENV_FILE_NAME = ".env"
 ENV_KEYS = ("TZ_API_KEY_ID", "TZ_API_SECRET", "TZ_ACCOUNT_ID", "TZ_ROUTE", "DISCORD_WEBHOOK_URL", "DISCORD_MENTION",
-            "IB_HOST", "IB_PORT", "IB_CLIENT_ID", "VAULT_DB")
-ENV_SECRET = ("TZ_API_KEY_ID", "TZ_API_SECRET", "TZ_ACCOUNT_ID", "DISCORD_WEBHOOK_URL")
+            "IB_HOST", "IB_PORT", "IB_CLIENT_ID", "VAULT_DB", "TURSO_DATABASE_URL", "TURSO_AUTH_TOKEN")
+ENV_SECRET = ("TZ_API_KEY_ID", "TZ_API_SECRET", "TZ_ACCOUNT_ID", "DISCORD_WEBHOOK_URL", "TURSO_AUTH_TOKEN")
 ENV_ALIASES = {"TZ_API_SECRET_KEY": "TZ_API_SECRET", "TRADEZERO_API_KEY_ID": "TZ_API_KEY_ID",
                "TRADEZERO_API_SECRET": "TZ_API_SECRET", "DISCORD_WEBHOOK": "DISCORD_WEBHOOK_URL"}
 ENV_TEMPLATE = """# LH Short Bot - every credential in one file (3.11).
@@ -67,6 +67,10 @@ IB_CLIENT_ID=101
 
 # Your IB data vault (market_data_vault.db), read only - older days load from it first. Empty = not used
 VAULT_DB=
+
+# Turso cloud database (settings, favorites, backtests, notes, journals, vault): Settings > Keys and Discord
+TURSO_DATABASE_URL=
+TURSO_AUTH_TOKEN=
 
 # Live trading is NOT switched on here: it needs ALLOW_LIVE_TRADING = True in main.py.
 """

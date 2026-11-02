@@ -239,6 +239,7 @@ def _cloud():
 def _run_row(rid, job, pg, sm):
     return {"id": rid, "cfg": (job or {}).get("cfg", {}), "state": (pg or {}).get("state", "?"), "done": (pg or {}).get("done", 0),
             "total": (pg or {}).get("total", 0), "error": (pg or {}).get("error", ""),
+            "updated": (sm or {}).get("updated", ""), "days_total": (sm or {}).get("days_total"), "missing": (sm or {}).get("missing", 0),
             "tot": (sm or {}).get("tot"), "oos": (sm or {}).get("halves", [{}, {}])[-1] if sm else None,
             "note": (job or {}).get("note", "")}
 
@@ -791,7 +792,7 @@ def run_job(job_path):
         sm = stats(trades, job["cfg"])
         sm.update({"days_run": done, "days_total": total, "missing": miss, "errors": errs[:50],
                    "secs": round(time.time() - t0, 1), "stopped": stopped,
-                   "cached": cached, "new_days": done - cached})
+                   "cached": cached, "new_days": done - cached, "updated": datetime.now(ET).strftime("%Y-%m-%d %H:%M")})
         cols = ["tk", "day", "side", "setup", "entry_hms", "entry", "stop", "exit_hms", "exit", "result", "ret_pct", "size", "pnl",
                 "R", "note"]
         with open(os.path.join(out_dir, "trades.csv"), "w", encoding="utf-8", newline="") as fh:
@@ -811,13 +812,67 @@ def run_job(job_path):
                       "t0": t0})
 
 
-def new_job(k, cfg, favorites=()):
-    """Write the job (run folder + job.json). Returns (job_path, run_id, n_days). Runs nothing."""
+def main_run(folder):
+    """3.14: a strategy has ONE run. Its row (list_runs format) or None."""
+    runs = list_runs(folder)
+    return runs[0] if runs else None
+
+
+def pending(k, favorites=()):
+    """(ticker-days of the vault the run has not covered yet, all ticker-days of its settings) - exact: asks the saved
+    per-day results. A changed strategy file makes every day new (the saved results no longer fit)."""
+    st = strat(k)
+    old = main_run(st["folder"]) if st else None
+    if not old or old["state"] == "running":
+        return 0, 0
+    c = dict(DEFAULT_CFG)
+    c.update(old["cfg"] or {})
+    vault = settings().get("vault") or ""
+    days = day_list(vault, c, favorites)
+    cache = _cache_load({"strat": st, "cfg": c, "vault": vault})
+    have = cache["days"]
+    return sum(1 for tk, d in days if f"{tk}|{d}" not in have), len(days)
+
+
+def cards(favorites=()):
+    """3.14: the Backtest page - every strategy with its one run and how many new vault days wait for it."""
+    out = strategies()
+    try:
+        vault = settings().get("vault") or ""
+    except Exception:
+        vault = ""
+    for s in out:
+        s["new_days"] = None
+        r = s.get("last")
+        if r and r.get("state") in ("done", "stopped") and r.get("days_total") is not None and vault:
+            try:
+                c = dict(DEFAULT_CFG)
+                c.update(r["cfg"] or {})
+                s["new_days"] = max(0, len(day_list(vault, c, favorites)) - int(r["days_total"]))
+            except Exception:
+                pass
+    return out
+
+
+def new_job(k, cfg, favorites=(), update=False):
+    """Write the job (run folder + job.json). Returns (job_path, run_id, n_days). Runs nothing.
+    3.14: a strategy has one run. update=False creates it (refused if it exists); update=True runs the SAME run again with
+    its saved settings: the saved per-day results are reused, only the new vault days are run, and the run is replaced."""
     st = strat(k)
     if st is None:
         raise RuntimeError("Unknown strategy")
     s = settings()
     vault = s.get("vault") or ""
+    old = main_run(st["folder"])
+    if update:
+        if not old or old["state"] not in ("done", "stopped"):
+            raise RuntimeError("This strategy has no finished run to update - run it once first")
+        cfg = old["cfg"]
+        rid = old["id"]
+    else:
+        if old:
+            raise RuntimeError("This strategy already has its run - it updates itself (or delete the run to start over)")
+        rid = datetime.now(ET).strftime("%Y%m%d-%H%M%S")
     c = dict(DEFAULT_CFG)
     c.update({kk: v for kk, v in (cfg or {}).items() if kk in DEFAULT_CFG})
     for kk in ("locate", "slip", "comp_pct", "comp_max", "comp_max_long", "start_bal"):
@@ -825,14 +880,47 @@ def new_job(k, cfg, favorites=()):
     days = day_list(vault, c, favorites)
     if not days:
         raise RuntimeError("No vault days match these settings")
-    rid = datetime.now(ET).strftime("%Y%m%d-%H%M%S")
     out = os.path.join(BT_DIR, st["folder"], "runs", rid)
+    if os.path.isdir(out):                              # an update starts clean (the old result stays in Turso until the new one replaces it)
+        _rmtree_hard(out)
     os.makedirs(out, exist_ok=True)
-    job = {"strat": st, "cfg": c, "vault": vault, "days": days, "created": rid, "note": ""}
+    job = {"strat": st, "cfg": c, "vault": vault, "days": days, "created": rid, "note": "", "update": bool(update)}
     path = os.path.join(out, "job.json")
     _jsave(path, job)
-    save_settings(last_cfg=c)
+    if not update:
+        save_settings(last_cfg=c)
     return path, rid, len(days)
+
+
+def _trade_keys(text):
+    import io
+    return {f"{r.get('tk')}|{r.get('day')}" for r in csv.DictReader(io.StringIO(text or ""))}
+
+
+def _orphan_note_keys(c, folder, rid, root):
+    """Notes that belong only to the run being deleted: the ticker-days of its trades that no other run of the strategy
+    has (a note shown in another run stays - notes are per strategy and ticker-day)."""
+    def local(r):
+        try:
+            with open(os.path.join(root, r, "trades.csv"), encoding="utf-8", newline="") as fh:
+                return fh.read()
+        except OSError:
+            return ""
+    mine = _trade_keys(local(rid))
+    others = set()
+    if c is not None:
+        row = c.execute("SELECT csv FROM bt_trades WHERE folder=? AND rid=?", (folder, rid))
+        mine |= _trade_keys(row[0][0] if row else "")
+        for (t,) in c.execute("SELECT csv FROM bt_trades WHERE folder=? AND rid<>?", (folder, rid)):
+            others |= _trade_keys(t)
+    try:
+        for r in os.listdir(root):
+            if r != rid:
+                others |= _trade_keys(local(r))
+    except OSError:
+        pass
+    have = set(notes_all(folder))
+    return sorted((mine - others) & have)
 
 
 def delete_run(folder, rid):
@@ -852,10 +940,17 @@ def delete_run(folder, rid):
         raise RuntimeError("this run is still going - stop it first")
     c = _cloud()
     gone = False
-    if c is not None:                                    # 3.14: the run, its trades and its row leave the database too
+    orphans = _orphan_note_keys(c, folder, rid, root)
+    if c is not None:                                    # 3.14: the run, its trades, its row and its notes leave the database too
         c.batch([("DELETE FROM bt_trades WHERE folder=? AND rid=?", (folder, rid)),
-                 ("DELETE FROM bt_runs WHERE folder=? AND rid=?", (folder, rid))], atomic=True)
+                 ("DELETE FROM bt_runs WHERE folder=? AND rid=?", (folder, rid))] +
+                [("DELETE FROM bt_notes WHERE folder=? AND k=?", (folder, k)) for k in orphans], atomic=True)
         gone = True
+    elif orphans:
+        allv = _jload(_notes_path(folder), {})
+        for k in orphans:
+            allv.pop(k, None)
+        _jsave(_notes_path(folder), allv)
     if here:
         _rmtree_hard(d)
         if os.path.exists(d):

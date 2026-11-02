@@ -170,7 +170,8 @@ def run_feed(data_dir, vault_path, host, port, days, client_id=FEED_CLIENT_ID):
         vdir = os.path.dirname(os.path.abspath(vault_path))
         f = os.path.join(vdir, "ib_data_vault.py")
         if not os.path.isfile(f):                       # the replica folder has no copy: use the one in the vault folder
-            for cand in (os.path.join(os.path.dirname(__file__), "..", "..", "..", "ib_data_vault", "ib_data_vault.py"),
+            for cand in (os.path.join(os.path.dirname(__file__), "..", "..", "backtest", "_shared", "ib_data_vault.py"),
+                         os.path.join(os.path.dirname(__file__), "..", "..", "..", "ib_data_vault", "ib_data_vault.py"),
                          os.path.join(os.path.dirname(__file__), "..", "..", "ib_data_vault.py")):
                 if os.path.isfile(cand):
                     f = os.path.abspath(cand)

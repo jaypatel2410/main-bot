@@ -108,7 +108,9 @@ class Cloud:
         self.lock = threading.RLock()
         self.ready = False
         self.error = ""
-        self._pending = {}                      # (ns, k) -> value : background writes, latest wins
+        self.last_ok = 0.0                      # last successful round trip (status line)
+        self.err_at = 0.0
+        self._pending = {}                    # (ns, k) -> value : background writes, latest wins
         self._pcond = threading.Condition()
         self._writer = None
         self._cache = {}                        # ns -> {k: value}
@@ -130,10 +132,14 @@ class Cloud:
                 rq = urllib.request.Request(self.url + "/v2/pipeline", data=body, method="POST",
                                             headers={"Authorization": "Bearer " + self.token, "Content-Type": "application/json"})
                 with urllib.request.urlopen(rq, timeout=60) as resp:
-                    return json.loads(resp.read().decode("utf-8"))
+                    out = json.loads(resp.read().decode("utf-8"))
+                self.last_ok = time.time()
+                return out
             except urllib.error.HTTPError as exc:
                 msg = exc.read().decode("utf-8", "replace")[:300]
                 if exc.code in (401, 403):
+                    self.err_at = time.time()
+                    self.error = "the token was refused - check TURSO_AUTH_TOKEN"
                     raise TursoError(f"Turso refused the token (HTTP {exc.code}) - check TURSO_AUTH_TOKEN") from None
                 last = TursoError(f"Turso HTTP {exc.code}: {msg}")
                 if exc.code < 500 and exc.code != 429:
@@ -141,6 +147,7 @@ class Cloud:
             except (urllib.error.URLError, OSError, ValueError) as exc:
                 last = TursoError(f"Turso not reachable: {exc}")
             time.sleep(0.6 * (i + 1))
+        self.error, self.err_at = str(last), time.time()
         raise last
 
     def batch(self, stmts, atomic=False):
@@ -186,7 +193,7 @@ class Cloud:
             self.ready = True
             self.error = ""
         except TursoError as exc:
-            self.ready, self.error = False, str(exc)
+            self.ready, self.error, self.err_at = False, str(exc), time.time()
         return self.ready
 
     # ------------------------------------------------------------------ key/value (settings, favorites, caches ...)
@@ -320,6 +327,25 @@ def cloud():
         return c if (c.configured() and c.ready) else None
 
 
-def reset_for_tests():
+def reset():
+    """New credentials were saved: forget the client (the next cloud() call reads .env again)."""
     global _CLOUD
-    _CLOUD = None
+    with _CLOUD_LOCK:
+        _CLOUD = None
+
+
+reset_for_tests = reset
+
+
+def status():
+    """For the status line: {state: off|ok|error, host, error, pending, last_ok (seconds ago or None)}."""
+    c = cloud()
+    raw = _CLOUD
+    if raw is None or not raw.configured():
+        return {"state": "off", "host": "", "error": "", "pending": 0, "last_ok": None}
+    host = raw.url.replace("https://", "") if raw.url else "local file"
+    if c is None:
+        return {"state": "error", "host": host, "error": raw.error or "not reachable", "pending": 0, "last_ok": None}
+    bad = raw.error and (not raw.last_ok or raw.err_at > raw.last_ok)
+    return {"state": "error" if bad else "ok", "host": host, "error": raw.error if bad else "", "pending": len(raw._pending),
+            "last_ok": None if not raw.last_ok else int(time.time() - raw.last_ok)}

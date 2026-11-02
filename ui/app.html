@@ -34,6 +34,7 @@ __APP_CSS__
     <div><span>Day P&amp;L</span><b id="a-pnl">-</b></div>
     <div><span>Unrealized</span><b id="a-un">-</b></div>
   </div>
+  <button class="pill" id="cloud" title="Turso cloud database - click to open the settings"><i></i><span>Cloud off</span></button>
   <button class="pill connecting" id="conn" title="IB Gateway - click to reconnect"><i></i><span>Connecting</span></button>
   <button class="kebab" id="menu-btn" title="Menu: switches, trading mode, panels, keys, connection">&#8942;</button>
 </header>
@@ -202,14 +203,17 @@ __APP_CSS__
 <section class="screen" id="scr-bt" aria-label="Dashboard">
   <div class="sch"><span class="st">Dashboard</span><span class="sm" id="bt-meta"></span><div class="spacer"></div></div>
   <div class="btwrap">
-    <nav class="btnav" id="bt-strats" aria-label="Strategies"></nav>
+    <nav class="btnav" id="bt-strats" aria-label="Strategies" hidden></nav>
     <div class="btmain">
-      <div class="btv on" id="btv-run">
+      <div class="btcard hidden" id="bt-progc"><div class="bth" id="bt-progt">Running...</div><div class="btprog"><i id="bt-progb" style="width:0%"></i></div></div>
+      <div class="btv on" id="btv-cards"><div class="btcards" id="bt-cards"></div></div>
+      <div class="btv" id="btv-run">
+        <div><button class="sbtn" data-btback="cards">&lsaquo; Strategies</button></div>
         <div style="display:flex;align-items:flex-end;gap:12px"><div style="flex:1"><div style="font-size:19px;font-weight:700" id="bt-sname">-</div>
 </div>
-          <button class="sbtn pri" id="bt-go" style="height:36px;padding:0 20px;font-size:14px">Run backtest</button>
+          <button class="sbtn pri" id="bt-go" style="height:36px;padding:0 20px;font-size:14px">Run once</button>
           <button class="sbtn danger hidden" id="bt-stop" style="height:36px">Stop</button></div>
-        <div class="btcard hidden" id="bt-progc"><div class="bth" id="bt-progt">Running...</div><div class="btprog"><i id="bt-progb" style="width:0%"></i></div></div>
+        <div class="sm" style="white-space:normal;line-height:1.5">One run per strategy. After this first run, every time you open the strategy it runs only the ticker-days added to the vault since, keeps everything it already has, and updates the P&amp;L and every number at once.</div>
         <button class="btfold" id="bt-fold" aria-expanded="false"><span class="btcar">&#9656;</span> Run settings <span class="sm" id="bt-foldsum"></span></button>
         <div class="btgrid3 hidden" id="bt-setc">
           <div class="btcard"><div class="bth">Days</div>
@@ -225,10 +229,10 @@ __APP_CSS__
           <div class="btcard"><div class="bth">Run</div>
             <label class="btf">Workers<input class="btin" id="bt-procs"></label></div>
         </div>
-        <div class="btcard btruns"><div class="bth">Past runs</div><div id="bt-runs"></div></div>
+        <div id="bt-runs" hidden></div>
       </div>
       <div class="btv" id="btv-res">
-        <div style="display:flex;align-items:center;gap:10px"><button class="sbtn" data-btback="run">&lsaquo; Runs</button><b id="bt-rtitle" style="font-size:15px"></b><span class="sm" id="bt-rsub"></span></div>
+        <div style="display:flex;align-items:center;gap:10px"><button class="sbtn" data-btback="cards">&lsaquo; Strategies</button><b id="bt-rtitle" style="font-size:15px"></b><span class="sm" id="bt-rsub"></span><div class="spacer"></div><span class="sm" id="bt-upst"></span><button class="sbtn pri" id="bt-upd">Update now</button><button class="sbtn danger" id="bt-reset" title="Delete this run (and its notes) to start over">Delete run</button></div>
         <div class="btkpi" id="bt-kpi"></div>
         <div style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:12px">
           <div class="btcard"><div class="bth">Account P&amp;L, compounding <span class="sm" id="bt-eqs"></span></div><svg id="bt-eq" viewBox="0 0 600 170" preserveAspectRatio="none" style="width:100%;height:170px"></svg></div>
@@ -316,6 +320,12 @@ __APP_CSS__
   <label>Ping on urgent messages<input id="d-men" autocomplete="off" spellcheck="false" placeholder="@everyone, <@your user id> or empty"></label>
   <div class="kst" id="d-st"></div>
   <div class="kbtns"><button class="sbtn" id="k-cancel">Close</button><button class="sbtn" id="d-test">Save and send test</button><button class="sbtn pri" id="d-save">Save</button></div>
+  <hr>
+  <div class="kt">Turso cloud database</div>
+  <label>Database URL<input id="t-url" autocomplete="off" spellcheck="false" placeholder="libsql://your-database-yourorg.turso.io"></label>
+  <label>Auth token<input id="t-tok" type="password" autocomplete="off" spellcheck="false" placeholder="leave empty to keep the saved token"></label>
+  <div class="kst" id="t-st"></div>
+  <div class="kbtns"><button class="sbtn pri" id="t-save">Save and connect</button></div>
 </div></div>
 <div id="stop-ov" class="kov hidden"><div class="kbox">
   <div class="kt" id="s-title">Move the stop</div>

@@ -5,7 +5,48 @@
   const btc = v => v == null || v === 0 ? '' : v > 0 ? 'grn' : 'red';
   const btEpoch = (day, hms) => { const [y, m, d] = day.split('-').map(Number); const [h, mi, s] = ((hms || '00:00:00') + ':00:00').split(':').map(Number);
     return Date.UTC(y, m - 1, d, h, mi, s) / 1000; };
-  function btView(v){ ['run', 'res', 'tr'].forEach(x => $('btv-' + x).classList.toggle('on', x === v)); if (v === 'tr' && btChart) setTimeout(btResize, 30); }
+  let btV = 'cards';
+  function btView(v){ btV = v; ['cards', 'run', 'res', 'tr'].forEach(x => $('btv-' + x).classList.toggle('on', x === v)); if (v === 'tr' && btChart) setTimeout(btResize, 30); }
+  // 3.14: the Backtest page = one card per strategy; a card opens that strategy's dashboard. A strategy has ONE run: it is
+  // created once ("Run once"), and every time the strategy is opened only the new vault days are run and added to it.
+  function btCards(){
+    api('bt_cards').then(r => {
+      if (!r || !r.ok) { $('bt-cards').innerHTML = `<div class="sm">${esc((r && r.error) || 'Not available')}</div>`; return; }
+      btS = r.strats || [];
+      $('bt-meta').textContent = r.vinfo && r.vinfo.ok ? `${r.vinfo.days.toLocaleString()} vault days · ${r.vinfo.from} – ${r.vinfo.to}` : 'Vault not set';
+      $('bt-cards').innerHTML = btS.map(s => {
+        const l = s.last, t = (l && l.tot) || null, o = (l && l.oos) || {}, live = r.running && r.running.k === s.k;
+        const side = String(s.side || '').toLowerCase();
+        const head = `<div class="bch"><div class="bcn">${esc(s.name)}</div><span class="bcs ${side === 'short' ? 'short' : side === 'long' ? 'long' : ''}">${esc(String(s.side || '').toUpperCase())}</span></div>`;
+        if (!l || (!t && !live)) return `<div class="bcard empty" data-bk="${esc(s.k)}">${head}<div class="bcp">No run yet</div><div class="bcf">Open it and press Run once</div></div>`;
+        const foot = live ? '<span class="bcrun">Updating...</span>' : s.new_days ? `<span class="bcnew">${s.new_days.toLocaleString()} new vault days</span>` : '<span>Up to date</span>';
+        return `<div class="bcard" data-bk="${esc(s.k)}">${head}<div class="bcp ${btc(t && t.pnl)}">${t ? btm(t.pnl) : '...'}</div>` +
+          `<div class="bck"><div>Trades<b>${t ? t.n : '-'}</b></div><div>Win %<b>${t && t.win != null ? t.win + '%' : '-'}</b></div><div>Profit factor<b>${t && t.pf != null ? t.pf : '-'}</b></div><div>Out-of-sample PF<b>${o.pf ?? '-'}</b></div></div>` +
+          `<div class="bcf">${foot}<span style="margin-left:auto">${l.updated ? 'updated ' + esc(l.updated) : ''}</span></div></div>`;
+      }).join('');
+    });
+  }
+  $('bt-cards').addEventListener('click', e => { const c = e.target.closest('[data-bk]'); if (c) btOpenStrategy(c.dataset.bk); });
+  function btOpenStrategy(k){
+    btK = k; btStrats(); btRes = null; btRid = '';
+    $('bt-upst').textContent = '';
+    btRuns().then(list => {
+      const m = list[0];
+      if (m && (m.state === 'done' || m.state === 'stopped')) { btOpen(m.id); btAutoUpdate(false); }
+      else if (m && m.state === 'running') { btWatch(); btView('run'); }
+      else btView('run');
+    });
+  }
+  function btAutoUpdate(manual){            // only the vault days the run has not covered yet; the run is replaced by the updated one
+    $('bt-upst').textContent = 'Checking the vault for new ticker-days...';
+    api('bt_update', btK).then(r => {
+      if (!r || !r.ok) { $('bt-upst').textContent = ''; if (manual || (r && r.error && !/already running/.test(r.error))) toast({kind: 'warn', text: 'Update: ' + ((r && r.error) || 'could not start')}); return; }
+      if (r.uptodate) { $('bt-upst').textContent = 'Up to date - no new ticker-days in the vault'; return; }
+      $('bt-upst').textContent = `Updating ${r.new.toLocaleString()} new ticker-days...`;
+      toast({kind: 'info', text: `Backtest update: ${r.new.toLocaleString()} new ticker-days (the rest is kept as it is)`});
+      btWatch();
+    });
+  }
   function btLoad(){
     api('bt_list').then(r => {
       if (!r || !r.ok) { $('bt-meta').textContent = (r && r.error) || 'Not available'; return; }
@@ -18,7 +59,7 @@
       $('bt-cp').value = c.comp_pct ?? 20; $('bt-cm').value = c.comp_max ?? 50000; $('bt-cml').value = c.comp_max_long ?? 10000; $('bt-procs').value = c.procs ?? 0;
       $('bt-listw').classList.toggle('hidden', $('bt-days').value !== 'list');
       btFoldSum(); if (!r.running && !btPoll) $('bt-progc').classList.add('hidden');
-      btStrats(); btRuns(); if (r.running) { btK = r.running.k; btStrats(); btWatch(); }
+      btStrats(); btCards(); btView('cards'); if (r.running) { btWatch(); }
     });
   }
   function btStrats(){
@@ -27,18 +68,7 @@
     $('bt-strats').innerHTML = live.map(b).join('') + own.map(b).join('');
     const s = btS.find(x => x.k === btK); $('bt-sname').textContent = s ? s.name : '-';
   }
-  function btRuns(){
-    api('bt_runs', btK).then(r => {
-      btList = (r && r.runs) || [];
-      $('bt-runs').innerHTML = '<div class="btrow h"><span>RUN</span><span>DAYS</span><span>TRADES</span><span>WIN %</span><span>P&amp;L</span><span>PF</span><span>OUT-OF-SAMPLE PF</span><span>STATE</span><span></span></div>' +
-        (btList.length ? btList.map(x => { const t = x.tot || {}, c = x.cfg || {}, o = x.oos || {};
-          return `<div class="btrow click" data-br="${esc(x.id)}"><span>${esc(x.id.slice(4, 6) + '-' + x.id.slice(6, 8) + ' ' + x.id.slice(9, 11) + ':' + x.id.slice(11, 13))}</span>` +
-            `<span>${esc((c.from || 'start') + ' to ' + (c.to || 'end'))}${c.days && c.days !== 'all' ? ' (' + esc(c.days) + ')' : ''}</span><span>${t.n ?? '-'}</span><span>${t.win == null ? '-' : t.win + '%'}</span>` +
-            `<span class="${btc(t.pnl)}">${btm(t.pnl)}</span><span>${t.pf ?? '-'}</span><span>${o.pf ?? '-'}</span><span class="sm">${esc(x.state)}${x.state === 'running' ? ` ${x.done}/${x.total}` : ''}${x.error ? ': ' + esc(x.error) : ''}</span>` +
-            `<span>${x.state === 'running' ? '' : `<button class="sbtn danger btdel" data-bdel="${esc(x.id)}">Delete</button>`}</span></div>`; }).join('')
-          : '<div class="sm" style="padding:8px 6px">No runs</div>');
-    });
-  }
+  function btRuns(){ return api('bt_runs', btK).then(r => { btList = (r && r.runs) || []; return btList; }); }
   // 3.12.2: the run settings fold away (closed by default; remembered on this PC)
   function btFoldSum(){ const c = btCfg();
     $('bt-foldsum').textContent = `${c.from || 'start'} to ${c.to || 'end'} - ${c.days === 'fav' ? 'favorites' : c.days === 'list' ? 'list file' : 'all vault days'} - locate ${c.locate}% - slip ${c.slip}% - $${(c.start_bal || 0).toLocaleString()} start, ${c.comp_pct}% per trade (short max $${(c.comp_max || 0).toLocaleString()}, long max $${(c.comp_max_long || 0).toLocaleString()})`; }
@@ -56,15 +86,15 @@
       const j = r && r.job; if (!j) return;
       const pc = j.total ? Math.round(100 * (j.done || 0) / j.total) : 0;
       $('bt-progb').style.width = pc + '%';
-      if (Date.now() - (btWatch.lastRuns || 0) > 2000) { btWatch.lastRuns = Date.now(); btRuns(); }   // 3.12.2: live count in the runs list
-      $('bt-progt').textContent = j.state === 'running' ? `Running ${esc(j.k)}: ${(j.done || 0).toLocaleString()} / ${(j.total || 0).toLocaleString()} ticker-days - ${j.trades || 0} trades so far` :
+      $('bt-progt').textContent = j.state === 'running' ? `Running ${esc(j.k)}: ${(j.done || 0).toLocaleString()} / ${(j.total || 0).toLocaleString()} ticker-days (saved days are reused) - ${j.trades || 0} trades so far` :
         j.state === 'error' ? 'Backtest failed: ' + (j.error || '') : `Finished: ${j.trades || 0} trades in ${j.secs || '-'} s`;
       if (j.state !== 'running' || !j.alive) {
         clearInterval(btPoll); btPoll = null; $('bt-go').disabled = false; $('bt-stop').classList.add('hidden');
         $('bt-progc').classList.add('hidden');            // 3.12.2: the bar only shows while a run is going
         if (j.state === 'error') toast({kind: 'err', text: 'Backtest failed: ' + (j.error || 'unknown error')});
-        btRuns(); api('bt_list').then(x => { if (x && x.ok) { btS = x.strats; btStrats(); } });
-        if (j.state === 'done' || j.state === 'stopped') btOpen(j.rid);
+        $('bt-upst').textContent = j.state === 'error' ? '' : 'Up to date';
+        if ((j.state === 'done' || j.state === 'stopped') && btV !== 'cards' && j.k === btK) btOpen(j.rid);   // the updated run replaces the old one
+        if (btV === 'cards') btCards();
       }
     }), 1000);
   }
@@ -78,8 +108,8 @@
   }
   function btRenderRes(){
     const r = btRes, sm = r.summary, t = sm.tot, s = btS.find(x => x.k === btK), c = r.job || {};
-    $('bt-rtitle').textContent = (s ? s.name : btK) + ' - run ' + btRid;
-    $('bt-rsub').textContent = `${c.from || 'start'} to ${c.to || 'end'} - ${(sm.days_run || 0).toLocaleString()} ticker-days - locate ${c.locate}% - slippage ${c.slip}%${sm.missing ? ' - ' + sm.missing + ' not in the vault' : ''}${sm.errors && sm.errors.length ? ' - ' + sm.errors.length + ' errors' : ''}${sm.stopped ? ' - STOPPED early' : ''}`;
+    $('bt-rtitle').textContent = s ? s.name : btK;
+    $('bt-rsub').textContent = `${sm.updated ? 'updated ' + sm.updated + ' - ' : ''}${c.from || 'start'} to ${c.to || 'end'} - ${(sm.days_run || 0).toLocaleString()} ticker-days - locate ${c.locate}% - slippage ${c.slip}%${sm.missing ? ' - ' + sm.missing + ' not in the vault' : ''}${sm.errors && sm.errors.length ? ' - ' + sm.errors.length + ' errors' : ''}${sm.stopped ? ' - STOPPED early' : ''}`;
     const sb = Number(c.start_bal || 10000), cmS = Number(c.comp_max || 50000), cmL = Number(c.comp_max_long || 10000);
     const K = [['Trades', t.n, ''], ['Win %', t.win == null ? '-' : t.win + '%', ''],
       ['P&L', `<span class="${btc(t.pnl)}">${btm(t.pnl)}</span>`, `$${sb.toLocaleString()} -> $${Number(t.comp_end || 0).toLocaleString()} - ${c.comp_pct || 20}% per trade, short max $${cmS.toLocaleString()}, long max $${cmL.toLocaleString()}, after costs`],
@@ -170,36 +200,24 @@
   function btNoteSync(n){ btNotes = n; btRenderNotes(); const t = btCur; if (!t) return;
     t.verdict = n.verdict || ''; t.nnote = (n.notes || []).length; t.note1 = t.nnote ? n.notes[t.nnote - 1].text.slice(0, 120) : '';
     (btRes.trades || []).forEach(x => { if (x.tk === t.tk && x.day === t.day) { x.verdict = t.verdict; x.nnote = t.nnote; x.note1 = t.note1; } }); }
-  $('bt-strats').addEventListener('click', e => { const b = e.target.closest('[data-bk]'); if (!b) return; btK = b.dataset.bk; btStrats(); btRuns(); btView('run'); });
-  let btDelArm = '', btDelT = null;
-  $('bt-runs').addEventListener('click', e => {
-    const d = e.target.closest('[data-bdel]');
-    if (d) {                                        // 3.13.1: delete a run - click twice (the folder is removed)
-      e.stopPropagation();
-      const rid = d.dataset.bdel;
-      if (btDelArm !== rid) {
-        btDelArm = rid; d.textContent = 'Confirm'; clearTimeout(btDelT);
-        btDelT = setTimeout(() => { btDelArm = ''; btRuns(); }, 4000);
-        return;
-      }
-      btDelArm = ''; clearTimeout(btDelT);
-      const row = d.closest('.btrow'); if (row) row.remove();          // gone from the list at once
-      api('bt_delete', btK, rid).then(r => {
-        if (!r || !r.ok) toast({kind: 'err', text: (r && r.error) || 'Not deleted'});
-        if (btRid === rid) { btRes = null; btRid = ''; }
-        btRuns(); api('bt_list').then(x => { if (x && x.ok) { btS = x.strats; btStrats(); } });
-      });
-      return;
-    }
-    const b = e.target.closest('[data-br]'); if (b) btOpen(b.dataset.br);
+  let btDelArm = false, btDelT = null;
+  $('bt-upd').addEventListener('click', () => btAutoUpdate(true));
+  $('bt-reset').addEventListener('click', () => {                 // delete the run (and its notes) to start over - click twice
+    const b = $('bt-reset');
+    if (!btDelArm) { btDelArm = true; b.textContent = 'Click again to confirm'; clearTimeout(btDelT); btDelT = setTimeout(() => { btDelArm = false; b.textContent = 'Delete run'; }, 4000); return; }
+    btDelArm = false; clearTimeout(btDelT); b.textContent = 'Delete run';
+    api('bt_delete', btK, btRid).then(r => {
+      if (!r || !r.ok) { toast({kind: 'err', text: (r && r.error) || 'Not deleted'}); return; }
+      btRes = null; btRid = ''; toast({kind: 'info', text: 'Run deleted with its notes - run it once to start again'}); btView('run');
+    });
   });
   $('bt-days').addEventListener('change', () => $('bt-listw').classList.toggle('hidden', $('bt-days').value !== 'list'));
   $('bt-vset').addEventListener('click', () => api('bt_vault', $('bt-vault').value).then(r => { if (r && r.ok) { toast({kind: 'info', text: 'Vault set'}); btLoad(); } else toast({kind: 'err', text: (r && r.error) || 'Vault not found'}); }));
   $('bt-go').addEventListener('click', () => api('bt_run', btK, btCfg()).then(r => {
-    if (r && r.ok) { toast({kind: 'info', text: `Backtest started: ${r.n.toLocaleString()} ticker-days`}); btWatch(); btRuns(); }
+    if (r && r.ok) { toast({kind: 'info', text: `Backtest started: ${r.n.toLocaleString()} ticker-days`}); btWatch(); }
     else toast({kind: 'err', text: 'Backtest: ' + ((r && r.error) || 'could not start')}); }));
   $('bt-stop').addEventListener('click', () => api('bt_stop').then(() => toast({kind: 'info', text: 'Stopping the backtest - the trades so far are kept'})));
-  document.querySelectorAll('[data-btback]').forEach(b => b.addEventListener('click', () => { const v = b.dataset.btback; if (v === 'res') btRenderTrades(); else btRuns(); btView(v); }));
+  document.querySelectorAll('[data-btback]').forEach(b => b.addEventListener('click', () => { const v = b.dataset.btback; if (v === 'res') btRenderTrades(); else if (v === 'cards') btCards(); btView(v); }));
   $('bt-by').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; btBy = b.dataset.v;
     document.querySelectorAll('#bt-by button').forEach(x => x.classList.toggle('on', x === b)); btRenderBrk(); });
   $('bt-tf').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; btTF = b.dataset.v;
