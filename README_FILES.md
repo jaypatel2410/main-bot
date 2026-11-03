@@ -25,15 +25,19 @@ main bot version 3.12\
       IB.py                   market data: IB Gateway, scanner, chart data, candle cache
       helpers.py              .env, strategy selection, chart rows, settings file, alerts, journal, UI bridge
       vault_feed.py           the daily vault feed (monitored tickers -> the data vault the next day)
+      chart_notes.py          your chart notes (right click -> Add note): Turso + a copy on this PC, shared by the
+                              live chart and every backtest chart of the same ticker-day
     broker\Tradezero.py       orders, positions, locates, fill history (TradeZero REST)
     notify\lh_discord.py      Discord messages and chart pictures
     window\jsapi.py           what the app window calls
     backtest_engine\lh_backtest.py   the Backtest tab's engine (separate process)
   ui\
     app.html, app.css         the window's screens and look
-    js\01_boot.js ... 13_hotkeys.js  the window's code, one file per area (joined in order into one script)
+    js\01_boot.js ... 13_hotkeys.js  the window's code, one file per area (joined in order into one script;
+                              09b_chart_notes.js = the note editor and the numbered badges on both charts)
   RELEASE_NOTES_3.13.0.md     what changed in 3.13.0 (Jay-read 2)
   tests\test_safety_313.py   safety checks (live lock, defaults, one short per stock, no secrets in .env.example)
+  tests\test_chart_notes.py  chart notes: save / edit / delete, two PCs, Turso down, old backtest notes moved over
   backtest\                   the strategies (the live bot loads them from here) + their backtests
     jay_read_2\               3.13.0 THE LIVE SHORT: jay_read_2_short.py (SETTINGS at the top: gapper / spiker sets),
                               jay_read_2_research.py (the research engine), jay_read_2_equivalence_test.py, runs\, notes.json

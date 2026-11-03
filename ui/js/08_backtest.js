@@ -1,6 +1,6 @@
   // ---- 3.13: Backtest tab ----
   let btS = [], btK = 'jr', btRes = null, btRid = '', btList = [], btI = -1, btBy = 'halves', btTF = 'all', btPoll = null;
-  let btChart = null, btSer = null, btVw = null, btDay = null, btDSer = null, btStopLine = null, btPinAt = null, btCur = null, btNotes = null, btVerd = '';
+  let btChart = null, btSer = null, btVw = null, btDay = null, btDSer = null, btStopLine = null, btCur = null, btNotes = null, btVerd = '';
   const btm = v => v == null ? '-' : (v > 0 ? '+' : v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString('en-US', {maximumFractionDigits: 0});
   const btc = v => v == null || v === 0 ? '' : v > 0 ? 'grn' : 'red';
   const btEpoch = (day, hms) => { const [y, m, d] = day.split('-').map(Number); const [h, mi, s] = ((hms || '00:00:00') + ':00:00').split(':').map(Number);
@@ -18,7 +18,7 @@
         const l = s.last, t = (l && l.tot) || null, o = (l && l.oos) || {}, live = r.running && r.running.k === s.k;
         const side = String(s.side || '').toLowerCase();
         const head = `<div class="bch"><div class="bcn">${esc(s.name)}</div><span class="bcs ${side === 'short' ? 'short' : side === 'long' ? 'long' : ''}">${esc(String(s.side || '').toUpperCase())}</span></div>`;
-        if (!l || (!t && !live)) return `<div class="bcard empty" data-bk="${esc(s.k)}">${head}<div class="bcp">No run yet</div><div class="bcf">Open it and press Run once</div></div>`;
+        if (!l || (!t && !live)) return `<div class="bcard empty" data-bk="${esc(s.k)}">${head}<div class="bcp">No run yet</div></div>`;
         const foot = live ? '<span class="bcrun">Updating...</span>' : s.new_days ? `<span class="bcnew">${s.new_days.toLocaleString()} new vault days</span>` : '<span>Up to date</span>';
         return `<div class="bcard" data-bk="${esc(s.k)}">${head}<div class="bcp ${btc(t && t.pnl)}">${t ? btm(t.pnl) : '...'}</div>` +
           `<div class="bck"><div>Trades<b>${t ? t.n : '-'}</b></div><div>Win %<b>${t && t.win != null ? t.win + '%' : '-'}</b></div><div>Profit factor<b>${t && t.pf != null ? t.pf : '-'}</b></div><div>Out-of-sample PF<b>${o.pf ?? '-'}</b></div></div>` +
@@ -151,10 +151,7 @@
     btVw = btChart.addLineSeries({color: '__VWAP__', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false});
     btDay = LWC.createChart($('bt-daily'), Object.assign({}, opt, {timeScale: {timeVisible: false, borderColor: '#222'}, handleScroll: false, handleScale: false}));
     btDSer = btDay.addCandlestickSeries({upColor: '__UP__', downColor: '__DOWN__', borderVisible: false, wickUpColor: '__UP__', wickDownColor: '__DOWN__'});
-    btChart.subscribeClick(p => { if (!p || !p.point || !p.time || !btCur) return;
-      const px = btSer.coordinateToPrice(p.point.y); if (px == null) return;
-      const d = new Date(p.time * 1000), hms = d.toISOString().slice(11, 19);
-      btPinAt = {px: Number(Number(px).toPrecision(5)), hms}; $('bt-pin').textContent = `Pin: ${hms.slice(0, 5)} at ${fmtPx(btPinAt.px)} (click again to move it)`; });
+    cnAttachBt();                                     // 3.14: right click -> Add note; the numbered badges (09b_chart_notes.js)
     window.addEventListener('resize', btResize);
   }
   function btMarkers(){
@@ -163,19 +160,15 @@
     const fl = s => Math.floor(btEpoch(t.day, s) / 60) * 60;
     if (t.entry_hms) m.push({time: fl(t.entry_hms), position: short ? 'aboveBar' : 'belowBar', color: short ? '#ff1744' : '#00e676', shape: short ? 'arrowDown' : 'arrowUp', text: ''});
     if (t.exit_hms) m.push({time: fl(t.exit_hms), position: short ? 'belowBar' : 'aboveBar', color: short ? '#00e676' : '#ff1744', shape: short ? 'arrowUp' : 'arrowDown', text: ''});
-    ((btNotes && btNotes.notes) || []).forEach((n, i) => { if (n.hms) m.push({time: fl(n.hms), position: 'aboveBar', color: '#fde68a', shape: 'circle', text: String(i + 1)}); });
     m.sort((a, b) => a.time - b.time); btSer.setMarkers(m);
   }
-  function btRenderNotes(){
-    const n = btNotes || {notes: []}; btVerd = n.verdict || '';
+  function btRenderNotes(){                          // 3.14: the verdict (per strategy); the notes are chart notes (cnRenderBtList)
+    const n = btNotes || {}; btVerd = n.verdict || '';
     document.querySelectorAll('#bt-verd [data-vd]').forEach(b => b.classList.toggle('on', b.dataset.vd === btVerd));
-    $('bt-notes').innerHTML = (n.notes || []).length ? n.notes.map((x, i) => `<div class="btnote"><span class="m">&#9679; ${i + 1}${x.hms ? ' - ' + esc(x.hms.slice(0, 5)) : ''}${x.px ? ' - ' + fmtPx(x.px) : ''}</span>` +
-      `<span style="white-space:pre-wrap">${esc(x.text)}</span><span class="a">saved ${esc(x.saved || '')} <button data-nd="${esc(x.id)}">Delete</button></span></div>`).join('') : '<div class="sm">No note on this chart yet.</div>';
-    btMarkers();
   }
   function btOpenTrade(i){
     const T = btRes.trades; if (i < 0 || i >= T.length) return;
-    btI = i; btCur = T[i]; btPinAt = null; $('bt-ntext').value = ''; $('bt-pin').textContent = 'Click the chart to pin the note to a candle (optional).';
+    btI = i; btCur = T[i]; cnBars = []; cnRenderBtList(); cnLoad(btCur.tk);
     const t = btCur, s = btS.find(x => x.k === btK);
     $('bt-ttitle').textContent = `${t.tk} - ${t.day}`; $('bt-tsub').textContent = `Trade ${i + 1} of ${T.length} - ${s ? s.name : ''}`;
     const F = [['Setup', esc(t.setup)], ['Result', esc(t.result)], ['Entry', `${fmtPx(t.entry)} - ${esc((t.entry_hms || '').slice(0, 5))}`], ['Exit', `${fmtPx(t.exit)} - ${esc((t.exit_hms || '').slice(0, 5))}`],
@@ -189,7 +182,7 @@
       if (!r || !r.ok) { toast({kind: 'warn', text: `${t.tk} ${t.day}: no bars in the vault`}); return; }
       btSer.setData(r.bars.map(b => ({time: b.time, open: b.open, high: b.high, low: b.low, close: b.close})));
       btVw.setData(r.bars.map(b => ({time: b.time, value: b.vwap})));
-      btDSer.setData(r.daily || []); btDay.timeScale().fitContent();
+      btDSer.setData(r.daily || []); btDay.timeScale().fitContent(); cnBtSetBars(r.bars);
       if (t.stop) btStopLine = btSer.createPriceLine({price: t.stop, color: '#ffd600', lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: 'stop'});
       const e = Math.floor(btEpoch(t.day, t.entry_hms) / 60) * 60;
       btChart.timeScale().setVisibleRange({from: e - 3 * 3600, to: Math.max(e + 3 * 3600, Math.floor(btEpoch(t.day, t.exit_hms || '16:00:00') / 60) * 60 + 1800)});
@@ -197,9 +190,8 @@
     });
     api('bt_notes', btK, t.tk, t.day).then(n => { if (btCur === t && n && n.ok) { btNotes = n; btRenderNotes(); } });
   }
-  function btNoteSync(n){ btNotes = n; btRenderNotes(); const t = btCur; if (!t) return;
-    t.verdict = n.verdict || ''; t.nnote = (n.notes || []).length; t.note1 = t.nnote ? n.notes[t.nnote - 1].text.slice(0, 120) : '';
-    (btRes.trades || []).forEach(x => { if (x.tk === t.tk && x.day === t.day) { x.verdict = t.verdict; x.nnote = t.nnote; x.note1 = t.note1; } }); }
+  function btNoteSync(n){ btNotes = n; btRenderNotes(); const t = btCur; if (!t) return;     // the verdict of this ticker-day
+    (btRes.trades || []).forEach(x => { if (x.tk === t.tk && x.day === t.day) x.verdict = n.verdict || ''; }); }
   let btDelArm = false, btDelT = null;
   $('bt-upd').addEventListener('click', () => btAutoUpdate(true));
   $('bt-reset').addEventListener('click', () => {                 // delete the run (and its notes) to start over - click twice
@@ -208,7 +200,7 @@
     btDelArm = false; clearTimeout(btDelT); b.textContent = 'Delete run';
     api('bt_delete', btK, btRid).then(r => {
       if (!r || !r.ok) { toast({kind: 'err', text: (r && r.error) || 'Not deleted'}); return; }
-      btRes = null; btRid = ''; toast({kind: 'info', text: 'Run deleted with its notes - run it once to start again'}); btView('run');
+      btRes = null; btRid = ''; toast({kind: 'info', text: 'Run deleted with its verdicts - your chart notes are kept'}); btView('run');
     });
   });
   $('bt-days').addEventListener('change', () => $('bt-listw').classList.toggle('hidden', $('bt-days').value !== 'list'));
@@ -227,11 +219,4 @@
   $('bt-prev').addEventListener('click', () => btStep(-1)); $('bt-next').addEventListener('click', () => btStep(1));
   $('bt-verd').addEventListener('click', e => { const b = e.target.closest('[data-vd]'); if (!b || !btCur) return; const v = btVerd === b.dataset.vd ? '' : b.dataset.vd;
     api('bt_note_save', btK, btCur.tk, btCur.day, v).then(n => { if (n && n.ok) btNoteSync(n); }); });
-  $('bt-nsave').addEventListener('click', () => { const txt = $('bt-ntext').value.trim(); if (!btCur) return;
-    if (!txt) { toast({kind: 'warn', text: 'Type a note first'}); return; }
-    api('bt_note_save', btK, btCur.tk, btCur.day, null, txt, btPinAt ? btPinAt.px : null, btPinAt ? btPinAt.hms : null).then(n => {
-      if (n && n.ok) { $('bt-ntext').value = ''; btPinAt = null; $('bt-pin').textContent = 'Saved. Click the chart to pin the next note (optional).'; btNoteSync(n); toast({kind: 'info', text: 'Note saved'}); }
-      else toast({kind: 'err', text: (n && n.error) || 'Could not save the note'}); }); });
-  $('bt-notes').addEventListener('click', e => { const b = e.target.closest('[data-nd]'); if (!b || !btCur) return;
-    api('bt_note_save', btK, btCur.tk, btCur.day, null, null, null, null, b.dataset.nd, true).then(n => { if (n && n.ok) btNoteSync(n); }); });
 

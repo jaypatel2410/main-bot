@@ -116,11 +116,11 @@
       if (typeof s.ordh === 'number') ordFrac = clamp(s.ordh, 0.10, 0.70);
       if (s.orders === false) $('leftcol').classList.add('oclosed');
       ordAll = !!s.ordall; $('o-all').checked = ordAll;
-      const t0 = s.otab || (s.olong ? 'long' : 'pos');           // 3.10: Positions is the default tab
-      oTab = ['long', 'loc', 'orders', 'alr'].includes(t0) ? t0 : 'pos';
-      $('orders').classList.toggle('tab-long', oTab === 'long'); $('orders').classList.toggle('tab-loc', oTab === 'loc');
+      const t0 = s.otab || 'pos';                                // 3.10: Positions is the default tab
+      oTab = ['loc', 'orders', 'alr'].includes(t0) ? t0 : 'pos';  // 3.14: the premarket long tab is gone
+      $('orders').classList.toggle('tab-loc', oTab === 'loc');
       $('orders').classList.toggle('tab-pos', oTab === 'pos'); $('orders').classList.toggle('tab-alr', oTab === 'alr');
-      ['ord', 'long', 'loc', 'pos', 'alr'].forEach(k => $('tab-' + k).classList.toggle('on', (k === 'ord' ? 'orders' : k) === oTab));
+      ['ord', 'loc', 'pos', 'alr'].forEach(k => $('tab-' + k).classList.toggle('on', (k === 'ord' ? 'orders' : k) === oTab));
       const hk0 = s.hotkeys || {}; hkEnabled = !!hk0.on; hkMap = Object.assign(hkDefault(), hk0.map || {});
       $('o-tog').innerHTML = $('leftcol').classList.contains('oclosed') ? '&#9650;' : '&#9660;';
       applySizes();
@@ -167,7 +167,9 @@
       vwap.applyOptions({priceFormat: {type: 'price', precision: precision, minMove: 1 / Math.pow(10, precision)}});
       chart.applyOptions({watermark: {text: sym}});
       $('q-sym').textContent = sym; $('q-name').textContent = ''; fitSoon();       // 3.11: the ticker only
+      if (!keep) { $('q-bid').textContent = $('q-ask').textContent = '-'; $('q-ba').classList.remove('halt'); }   // 3.14: never the last symbol's quote
       $('p-sym').textContent = sym; inp.value = sym;
+      if (!keep || !(sym in cnAll)) cnLoad(sym);                // 3.14: this ticker's chart notes
       render(keep);
       if (!keep) defaultView();
       alSeen = ''; renderBot();
@@ -222,6 +224,9 @@
       const ch = $('q-chg');
       if (q.prior) { ch.textContent = `${q.chg >= 0 ? '+' : ''}${fmtP(q.chg)} (${q.up >= 0 ? '+' : ''}${q.up.toFixed(2)}%)`; ch.className = q.chg >= 0 ? 'up' : 'dn'; }
       else { ch.textContent = ''; }
+      $('q-bid').textContent = q.bid == null ? '-' : fmtP(q.bid);          // 3.14: bid x ask, every quote change (halts too)
+      $('q-ask').textContent = q.ask == null ? '-' : fmtP(q.ask);
+      $('q-ba').classList.toggle('halt', !!q.halted);
       const cu = $('c-up'), co = $('c-off');
       const gv = q.gap != null ? q.gap : q.up;
       cu.querySelector('span').textContent = gv == null ? '-' : `${gv >= 0 ? '+' : ''}${gv.toFixed(gv >= 100 ? 0 : 1)}%`;
@@ -247,7 +252,7 @@
     },
     setBot(p){ bot = p; renderBot(); },
     setOrders(p){ ords = p; renderOrders(); },
-    setLong(p){ lng = p; renderLong(); if (screen === 'bot') renderBC(); },
+    setLong(p){ lng = p; if (screen === 'bot') renderBC(); },   // 3.14: the long bot's own panel is gone (Bot center / Positions show it)
     olderSignals(p){                                       // 3.11: the strategies on scrolled-back days (display only)
       if (p.sym !== sym || p.gen !== gen) return;
       const ds = new Set(p.days || []);

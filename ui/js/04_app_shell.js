@@ -32,24 +32,6 @@
       });
     }, 1000);
   });
-  $('l-on').addEventListener('change', e => {
-    const on = e.target.checked;
-    e.target.checked = !!(lng && lng.on);
-    api('long_on', on).then(r => { if (r && !r.ok) toast({kind: 'err', text: r.error}); });
-  });
-  function lClick(e){
-    const s2 = e.target.closest('[data-os]');
-    if (s2) { api('load_symbol', s2.dataset.os).then(res => { if (res && res.recent) setRecent(res.recent); }); return; }
-    const x = e.target.closest('[data-ls]');
-    if (x) {
-      const sy = x.dataset.ls;
-      twoStep(x, 'ls' + sy, 'Sell', `Sell the ${sy} long now? (limit at the bid before 09:30, market after) Click again within 5 seconds.`,
-        () => api('long_sell', sy).then(r => { if (r && !r.ok) toast({kind: 'err', text: r.error}); }));
-      if (x.classList.contains('arm')) x.textContent = 'Sure?';
-    }
-  }
-  $('l-act').addEventListener('click', lClick);
-  $('l-cls').addEventListener('click', lClick);
 
   const armed2 = {};
   function twoStep(btn, key, label, msg, fn){
@@ -237,7 +219,7 @@
   function save(){ api('save_settings', {ext: ext, skipped: showSkip, sound: sound, panel: !$('main').classList.contains('nopanel'),
                                          wside: sideFrac, scanh: scanFrac, tf: String(tf),
                                          orders: !$('leftcol').classList.contains('oclosed'), ordall: ordAll, ordh: ordFrac,
-                                         olong: oTab === 'long', otab: oTab}); }
+                                         otab: oTab}); }
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   function applySizes(){
     const mw = $('main').getBoundingClientRect().width || window.innerWidth;

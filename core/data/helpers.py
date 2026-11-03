@@ -785,6 +785,7 @@ def make_quote(st):
         "gap": _f(gap, 2), "gapOk": (bool(gap >= STRAT.MIN_GAP_PCT) if gap is not None else None),
         "inZone": bool(off is not None and STRAT.ZONE_NEAR_PCT <= off <= STRAT.ZONE_FAR_PCT),
         "halted": bool(getattr(st, "halted", False)),
+        "bid": _f((getattr(st, "ba", None) or (None, None))[0]), "ask": _f((getattr(st, "ba", None) or (None, None))[1]),
     }
 
 
@@ -1395,6 +1396,8 @@ def journal_data(rng="month", month="", today=None, data_dir=None, tz_fills=None
     strat = []
     for k, nm in (("jr2", "Jay-read 2 short"), ("jr", "Jay-read short v1.2"), ("sq", "Max squeeze short"), ("long", "Premarket long")):
         g = [t for t in tr if t["strat"] == k]
+        if k == "sq" and not g and not sq_on():          # 3.14: the max squeeze is not in the bot - no empty row
+            continue
         gw = [t for t in g if t["net"] > 0]
         strat.append({"k": k, "name": nm, "n": len(g), "win": round(100.0 * len(gw) / len(g)) if g else None,
                       "net": round(sum(t["net"] for t in g), 2), "avg": round(sum(t["net"] for t in g) / len(g), 2) if g else None,

@@ -65,14 +65,16 @@
     $('a-bp').textContent = a.id ? money(a.bp) : '-';
     pn($('a-pnl'), a.id ? a.dayPnl : null); pn($('a-un'), a.id ? (a.unreal || 0) : null);
     // trading state chip + what is not trading
-    const md = bot.modes || {}, mon = bot.modeOn || {}, NM = {long: 'Long', jr: 'Jay-read', sq: 'Squeeze'};
-    const nt = Object.keys(NM).filter(k => mon[k] && md[k] && md[k] !== 'trading');
+    const md = bot.modes || {}, mon = bot.modeOn || {}, NM = {long: 'Long', jr2: 'Jay-read 2', jr: 'Jay-read', sq: 'Squeeze'};
+    const have = Object.keys(NM).filter(k => mon[k] && md[k]);          // 3.14: a strategy switched Off is your choice -
+    const alertOnly = have.filter(k => md[k] === 'alert');              // the chip only names the ones on alert only
     const chip = $('trade-chip');
     let ct, ck;
     if (!a.id) { ct = 'TradeZero not connected'; ck = ''; }
     else if (bot.liveBlocked) { ct = 'Live - orders locked'; ck = 'warn'; }
     else if (!bot.auto) { ct = 'Auto-trade OFF'; ck = 'warn'; }
-    else if (nt.length) { ct = nt.map(k => NM[k] + ' ' + (md[k] === 'alert' ? 'alert only' : 'off')).join(' · '); ck = 'warn'; }
+    else if (have.length && !have.some(k => md[k] === 'trading')) { ct = 'No strategy trading'; ck = 'warn'; }
+    else if (alertOnly.length) { ct = alertOnly.map(k => NM[k] + ' alert only').join(' · '); ck = 'warn'; }
     else { ct = 'Trading · ' + (a.type ? a.type.charAt(0).toUpperCase() + a.type.slice(1).toLowerCase() : 'TradeZero'); ck = 'ok'; }
     chip.className = 'tchip ' + ck; chip.querySelector('span').textContent = ct;
     let wn = '';
@@ -204,63 +206,25 @@
   });
   $('orders').querySelector('.oh').addEventListener('dblclick', e => { if (!e.target.closest('button,label')) $('o-tog').click(); });
 
-  // ---------------- premarket long tab (orders panel) ----------------
-  const lSetup = s => s === '1m MOMENTUM CHASE' ? 'Momentum' : s === '1m BULL FLAG' ? 'Bull flag' : (s || '');
-  const L_RES = {'STOP OUT': 'Stop', 'BREAKEVEN OUT': 'Breakeven', 'TIME STOP (DEAD MONEY)': 'Time stop',
-    'TRAILING STOP OUT': 'Trail stop', 'MARKET OPEN FLAT': 'Flatten', 'SOLD FROM APP': 'Sold by you'};
-  const lRes = s => { const half = (s || '').includes('(half at target)'), base = (s || '').replace(' (half at target)', '');
-    return esc(L_RES[base] || base) + (half ? ' <small>+ half at target</small>' : ''); };
+  // 3.14: the premarket long's own tab is gone - its trades are in Positions and in the Journal
   const lPnl = v => v == null ? '' : (v >= 0 ? 'grn' : 'red');
   const lMoney = v => v == null ? '-' : (v > 0 ? '+' : v < 0 ? '-' : '') + '$' + Math.abs(v).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
   function showTab(t){
-    oTab = ['long', 'loc', 'pos', 'alr'].includes(t) ? t : 'orders';
+    oTab = ['loc', 'pos', 'alr'].includes(t) ? t : 'orders';
     $('orders').classList.toggle('tab-alr', oTab === 'alr'); $('tab-alr').classList.toggle('on', oTab === 'alr');
-    $('orders').classList.toggle('tab-long', oTab === 'long');
     $('orders').classList.toggle('tab-loc', oTab === 'loc');
     $('orders').classList.toggle('tab-pos', oTab === 'pos');
-    $('tab-ord').classList.toggle('on', oTab === 'orders'); $('tab-long').classList.toggle('on', oTab === 'long');
+    $('tab-ord').classList.toggle('on', oTab === 'orders');
     $('tab-loc').classList.toggle('on', oTab === 'loc'); $('tab-pos').classList.toggle('on', oTab === 'pos');
     if (oTab === 'pos') renderPos();
     if ($('leftcol').classList.contains('oclosed')) { $('leftcol').classList.remove('oclosed'); $('o-tog').innerHTML = '&#9660;'; applySizes(); }
-    renderLong(); if (oTab === 'orders') renderOrders(true);
+    if (oTab === 'orders') renderOrders(true);
     if (oTab === 'loc') { renderLoc(); api('loc_refresh'); setTimeout(() => $('lc-sym').focus(), 50); }
     if (oTab === 'alr') { renderAlerts(); if (!$('al-sym').value) $('al-sym').value = sym; }
     save();
   }
-  function renderLong(){
-    if (!lng) return;
-    const act = lng.act || [], cls = lng.cls || [];
-    $('lt-n').textContent = act.length ? ' ' + act.length : '';
-    $('l-on').checked = !!lng.on;
-    const st = {off: 'OFF', waiting: 'waiting', running: 'running', closing: 'selling', done: 'done today'}[lng.st] || lng.st;
-    $('l-state').textContent = st;
-    $('l-state').className = 'lstate o-lng ' + (lng.st || '');
-    $('l-meta').textContent = (lng.note ? lng.note + ' - ' : '') + `${lng.win} ET weekdays` + (lng.st === 'running' ? ` - scanning, ${lng.watch} watched` : '');
-    $('l-meta').className = 'm o-lng' + (lng.note ? ' err' : '');
-    if (oTab !== 'long') return;
-    $('l-na').textContent = act.length; $('l-nc').textContent = cls.length;
-    $('l-tot').innerHTML = cls.length ? `${lng.w}/${lng.n} won - <b class="${lPnl(lng.tot)}">${lMoney(lng.tot)}</b>` : '';
-    $('l-act').innerHTML = act.length ? act.map(r => {
-      const armed = armed2['ls' + r.sym] && Date.now() - armed2['ls' + r.sym] < 5000;
-      return `<div class="orow lga" title="${esc(r.sym + ' - ' + r.setup + ' - target ' + fmtPx(r.target) + (r.trail ? ' - half sold, trailing' : ''))}">` +
-        `<span class="o-t">${esc(r.t)}</span><span class="o-s" data-os="${esc(r.sym)}">${esc(r.sym)}</span>` +
-        `<span class="o-ty">${esc(lSetup(r.setup))}</span>` +
-        `<span class="r">${r.sh.toLocaleString('en-US')}${r.sh !== r.init ? `<small>/${r.init.toLocaleString('en-US')}</small>` : ''}</span>` +
-        `<span class="r">${fmtPx(r.entry)}</span><span class="r">${fmtPx(r.last)}</span>` +
-        `<span class="r" title="${r.trail ? 'trailing stop (half sold at the target)' : 'stop'}">${fmtPx(r.stop)}${r.trail ? '<small> trail</small>' : ''}</span>` +
-        `<span class="r l-pnl ${lPnl(r.pnl)}">${lMoney(r.pnl)}</span>` +
-        (r.busy ? '<span class="o-busy">order...</span>' : `<button class="o-x${armed ? ' arm' : ''}" data-ls="${esc(r.sym)}" title="Sell this long now">${armed ? 'Sure?' : 'Sell'}</button>`) +
-        `</div>`;
-    }).join('') : `<div class="oempty">${!lng.on ? 'The long bot is OFF (switch above).' : lng.st === 'running' ? `No open long - the scanner is looking for stocks up ${lng.gap || 30}%+.` : `No open long. The long bot trades ${esc(lng.win)} ET on weekdays.`}</div>`;
-    $('l-cls').innerHTML = cls.length ? cls.map(r => `<div class="orow lgc" title="${esc(r.sym + ' - ' + r.setup + ' - ' + r.res + ' - ' + r.r.toFixed(2) + 'R - out ' + r.tx)}">` +
-        `<span class="o-t">${esc(r.t)}</span><span class="o-s" data-os="${esc(r.sym)}">${esc(r.sym)}</span>` +
-        `<span class="r">${r.sh.toLocaleString('en-US')}</span><span class="r">${fmtPx(r.entry)}</span><span class="r">${fmtPx(r.exit)}</span>` +
-        `<span class="o-ty">${lRes(r.res)}</span><span class="r l-pnl ${lPnl(r.pnl)}">${lMoney(r.pnl)}</span></div>`).join('')
-      : '<div class="oempty">No closed long trades today.</div>';
-  }
   $('tab-ord').addEventListener('click', () => showTab('orders'));
   $('tab-pos').addEventListener('click', () => showTab('pos'));
-  $('tab-long').addEventListener('click', () => showTab('long'));
   $('tab-loc').addEventListener('click', () => showTab('loc'));
   $('tab-alr').addEventListener('click', () => showTab('alr'));
 

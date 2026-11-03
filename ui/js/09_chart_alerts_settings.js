@@ -1,17 +1,6 @@
   // ---- 3.12.1: right click on the chart = price alert above / below that price (fires once, Discord) ----
   function ctxClose(){ $('ctxm').classList.add('hidden'); }
-  $('chart').addEventListener('contextmenu', e => {
-    if (!sym || !shown.length) return;
-    e.preventDefault();
-    const rc = $('chart').getBoundingClientRect(), p0 = candles.coordinateToPrice(e.clientY - rc.top);
-    if (p0 == null || !(p0 > 0)) return;
-    const p = Number(Number(p0).toFixed(precision)), m = $('ctxm');
-    m.innerHTML = `<div class="ch">${esc(sym)} - price alert (fires once, Discord)</div>` +
-      `<button data-cd="up" data-cp="${p}">Alert price above ${fmtPx(p)}</button><button data-cd="down" data-cp="${p}">Alert price below ${fmtPx(p)}</button>`;
-    m.classList.remove('hidden');
-    m.style.left = Math.min(e.clientX, window.innerWidth - m.offsetWidth - 8) + 'px';
-    m.style.top = Math.min(e.clientY, window.innerHeight - m.offsetHeight - 8) + 'px';
-  });
+  // 3.14: the chart's right-click menu (Add note + these alerts) is built in 09b_chart_notes.js
   $('ctxm').addEventListener('click', e => {
     const b = e.target.closest('[data-cd]'); if (!b) return;
     const d = b.dataset.cd, p = Number(b.dataset.cp), s = sym; ctxClose();

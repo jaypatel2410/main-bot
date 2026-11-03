@@ -445,10 +445,10 @@ def notes_save(folder, tk, day, verdict=None, text=None, px=None, hms=None, nid=
     if c is not None:
         _notes_migrate(c, folder)
         rows = c.execute("SELECT v FROM bt_notes WHERE folder=? AND k=?", (folder, key))
-        allv = {key: json.loads(rows[0][0])} if rows else {}
+        n = json.loads(rows[0][0]) if rows else None
     else:
-        allv = _jload(_notes_path(folder), {})
-    n = allv.get(key) or {"verdict": "", "notes": []}
+        n = _jload(_notes_path(folder), {}).get(key)
+    n = n or {"verdict": "", "notes": []}
     if verdict is not None:
         n["verdict"] = str(verdict)[:40]
     if delete and nid:
@@ -462,18 +462,43 @@ def notes_save(folder, tk, day, verdict=None, text=None, px=None, hms=None, nid=
         else:
             n["notes"].append({"id": f"{int(time.time() * 1000):x}", "text": str(text)[:4000], "px": px, "hms": hms or "",
                                "saved": now})
-    allv[key] = n
-    empty = not n["verdict"] and not n["notes"]
-    if empty:
-        allv.pop(key, None)
+    _notes_put(folder, key, n, c)
+    return n
+
+
+def _notes_put(folder, key, n, c=None):
+    """Write one ticker-day's verdict + notes (an empty one is removed)."""
+    empty = not n.get("verdict") and not n.get("notes")
     if c is not None:
         if empty:
             c.execute("DELETE FROM bt_notes WHERE folder=? AND k=?", (folder, key))
         else:
             c.execute("INSERT OR REPLACE INTO bt_notes (folder, k, v) VALUES (?,?,?)", (folder, key, json.dumps(n)))
-        return n
+        return
+    allv = _jload(_notes_path(folder), {})
+    if empty:
+        allv.pop(key, None)
+    else:
+        allv[key] = n
     _jsave(_notes_path(folder), allv)
-    return n
+
+
+def notes_move(folder, store):
+    """3.14: this strategy's chart notes move to the shared chart notes (core/data/chart_notes.py: the live chart and
+    every backtest chart of the ticker-day show them). The verdicts stay here, per strategy. A note is removed from here
+    only after the chart notes have it (on this PC at once; Turso in the background). Returns how many notes moved."""
+    c = _cloud()
+    moved = 0
+    for key, n in notes_all(folder).items():
+        if not n.get("notes"):
+            continue
+        tk, _, day = key.partition("|")
+        try:
+            moved += store.import_old(tk, day, n["notes"])
+        except ValueError:                               # not a ticker-day key: left where it is
+            continue
+        _notes_put(folder, key, {"verdict": n.get("verdict", ""), "notes": []}, c)
+    return moved
 
 
 # ----------------------------------------------------------------------------- the run (worker process)

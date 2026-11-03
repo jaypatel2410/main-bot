@@ -20,7 +20,7 @@ __APP_CSS__
   <div class="tfdd"><button id="tf-btn" title="Timeframe (keys 1-6)"><span id="tf-lab">1m</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
     <div id="tf-menu" class="hidden"><button data-tf="1">1 minute<kbd>1</kbd></button><button data-tf="2">2 minutes<kbd>2</kbd></button><button data-tf="5">5 minutes<kbd>3</kbd></button><button data-tf="15">15 minutes<kbd>4</kbd></button><button data-tf="30">30 minutes<kbd>5</kbd></button><button data-tf="D">1 day<kbd>6</kbd></button></div>
   </div>
-  <div class="quote"><span id="q-sym"></span><button id="q-fav" title="Add to favorites" aria-label="Add to favorites"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-9-8.6C1.6 8.3 3.6 5 6.8 5c2 0 3.4 1.1 4.2 2.4h2C13.8 6.1 15.2 5 17.2 5c3.2 0 5.2 3.3 3.8 6.4C19 15.6 12 20 12 20z"/></svg></button><span id="q-name"></span><span id="q-last"></span><span id="q-chg"></span></div>
+  <div class="quote"><span id="q-sym"></span><button id="q-fav" title="Add to favorites" aria-label="Add to favorites"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-9-8.6C1.6 8.3 3.6 5 6.8 5c2 0 3.4 1.1 4.2 2.4h2C13.8 6.1 15.2 5 17.2 5c3.2 0 5.2 3.3 3.8 6.4C19 15.6 12 20 12 20z"/></svg></button><span id="q-name"></span><span id="q-last"></span><span id="q-chg"></span><span id="q-ba" title="Bid x Ask, live from IB. In a halt IB keeps quoting - this is where the stock is indicated to open."><span id="q-bid">-</span><i>&times;</i><span id="q-ask">-</span></span></div>
   <div class="chips">
     <span hidden><span class="chip" id="c-up"><b>Gap</b><span>-</span></span><span class="chip" id="c-off"><b>Off HOD</b><span>-</span></span><span class="chip" id="c-hod"><b>HOD</b><span>-</span></span></span>
     <span class="chip" id="c-vwap"><b>VWAP</b><span>-</span></span>
@@ -28,6 +28,7 @@ __APP_CSS__
     <span class="chip halt" id="c-halt" title="IB reports a trading halt. The short limit cannot fill while the stock is halted.">HALTED</span>
   </div>
   <div class="spacer"></div>
+  <button class="sbtn danger" id="flat-btn" title="Cancel every bot order and cover every bot short now">Flatten all</button>
   <div class="acc" id="acc" title="TradeZero account">
     <div><span>Equity</span><b id="a-eq">-</b></div>
     <div id="acc-bp"><span>Buying power</span><b id="a-bp">-</b></div>
@@ -69,12 +70,10 @@ __APP_CSS__
   </section>
   <div id="osplit" class="split" title="Drag to resize the chart / orders - double-click to reset"></div>
   <section id="orders">
-    <div class="oh"><button class="otab" id="tab-pos" title="Open positions (bot shorts and premarket longs) and today's closed trades">Positions<b id="pos-n"></b></button><button class="otab on" id="tab-ord" title="TradeZero orders: pending and filled">Orders</button><button class="otab" id="tab-long" title="Premarket long bot (05:00-09:00 ET): active and closed trades">Premarket long<b id="lt-n"></b></button><button class="otab" id="tab-loc" title="Locate shares yourself (TradeZero's offers, $ per share, total) - and today's located shares">Locates<b id="lc-badge"></b></button><button class="otab" id="tab-alr" title="Price alerts: Alt + click on the chart, or add one here">Alerts<b id="al-n"></b></button>
+    <div class="oh"><button class="otab" id="tab-pos" title="Open positions (bot shorts and premarket longs) and today's closed trades">Positions<b id="pos-n"></b></button><button class="otab on" id="tab-ord" title="TradeZero orders: pending and filled">Orders</button><button class="otab" id="tab-loc" title="Locate shares yourself (TradeZero's offers, $ per share, total) - and today's located shares">Locates<b id="lc-badge"></b></button><button class="otab" id="tab-alr" title="Price alerts: Alt + click on the chart, or add one here">Alerts<b id="al-n"></b></button>
       <span class="obadge o-ord" id="o-bp">Pending <b>0</b></span><span class="obadge o-ord" id="o-bf">Filled <b>0</b></span>
       <span class="m o-ord" id="o-meta">TradeZero not connected</span>
       <label class="tgl o-ord" title="Also list cancelled / rejected orders on the right"><input type="checkbox" id="o-all"><span class="sw"></span><span>Cancelled</span></label>
-      <span class="lstate o-lng" id="l-state">-</span><span class="m o-lng" id="l-meta"></span>
-      <label class="tgl o-lng" title="ON = the premarket long bot scans and trades on weekdays (05:00-09:00 ET). OFF = no new scans or entries; open longs keep their exits."><input type="checkbox" id="l-on"><span class="sw"></span><span>Long bot</span></label>
       <span class="m o-loc" id="lc-meta">Your locates: no price cap. The bot's own: max <b id="lc-cap">5</b>% of the price a share.</span>
       <button class="iconbtn" id="o-tog" title="Hide / show the orders panel">&#9660;</button></div>
     <div class="obody o-pos" id="pos-body">
@@ -98,19 +97,6 @@ __APP_CSS__
         <div class="och">Filled today <b id="o-nf">0</b></div>
         <div class="ohd ogf"><span>Time</span><span>Symbol</span><span>Side</span><span class="r">Qty</span><span class="r">Avg</span><span class="o-ty">Type</span><span class="o-by">By</span></div>
         <div class="olist" id="o-fill"></div>
-      </div>
-    </div>
-    <div class="obody o-lng" id="l-body">
-      <div class="ocol">
-        <div class="och">Active <b id="l-na">0</b><span class="hint" id="l-hint">every long is sold by 09:00</span></div>
-        <div class="ohd lga"><span>In</span><span>Symbol</span><span>Setup</span><span class="r">Shares</span><span class="r">Entry</span><span class="r">Last</span><span class="r">Stop</span><span class="r">P&amp;L</span><span></span></div>
-        <div class="olist" id="l-act"></div>
-      </div>
-      <div class="odiv"></div>
-      <div class="ocol">
-        <div class="och">Closed today <b id="l-nc">0</b><span class="hint" id="l-tot"></span></div>
-        <div class="ohd lgc"><span>In</span><span>Symbol</span><span class="r">Shares</span><span class="r">Entry</span><span class="r">Exit</span><span>Result</span><span class="r">P&amp;L</span></div>
-        <div class="olist" id="l-cls"></div>
       </div>
     </div>
     <div class="obody o-loc" id="lc-body">
@@ -148,8 +134,7 @@ __APP_CSS__
       <div id="bot-warn"></div>
       <div class="acct" id="acct" hidden></div>
       <div class="wl-add"><input id="wl-in" placeholder="Add ticker + Enter" maxlength="12" spellcheck="false" autocomplete="off">
-        <button class="sbtn" id="wl-btn">Add</button>
-        <button class="sbtn danger" id="flat-btn" title="Cancel every bot order and cover every bot short now">Flatten all</button></div>
+        <button class="sbtn" id="wl-btn">Add</button></div>
       <div class="scan-head wgrid"><span>Symbol</span><span style="text-align:right">Last</span><span style="text-align:right">Gap</span><span>Bot status</span><span></span></div>
       <div id="wl-list"><div class="empty-sig">Add the tickers the bot should watch.</div></div>
     </section>
@@ -232,7 +217,7 @@ __APP_CSS__
         <div id="bt-runs" hidden></div>
       </div>
       <div class="btv" id="btv-res">
-        <div style="display:flex;align-items:center;gap:10px"><button class="sbtn" data-btback="cards">&lsaquo; Strategies</button><b id="bt-rtitle" style="font-size:15px"></b><span class="sm" id="bt-rsub"></span><div class="spacer"></div><span class="sm" id="bt-upst"></span><button class="sbtn pri" id="bt-upd">Update now</button><button class="sbtn danger" id="bt-reset" title="Delete this run (and its notes) to start over">Delete run</button></div>
+        <div style="display:flex;align-items:center;gap:10px"><button class="sbtn" data-btback="cards">&lsaquo; Strategies</button><b id="bt-rtitle" style="font-size:15px"></b><span class="sm" id="bt-rsub"></span><div class="spacer"></div><span class="sm" id="bt-upst"></span><button class="sbtn pri" id="bt-upd">Update now</button><button class="sbtn danger" id="bt-reset" title="Delete this run (and its verdicts) to start over - your chart notes are kept">Delete run</button></div>
         <div class="btkpi" id="bt-kpi"></div>
         <div style="display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:12px">
           <div class="btcard"><div class="bth">Account P&amp;L, compounding <span class="sm" id="bt-eqs"></span></div><svg id="bt-eq" viewBox="0 0 600 170" preserveAspectRatio="none" style="width:100%;height:170px"></svg></div>
@@ -250,12 +235,9 @@ __APP_CSS__
             <div class="btfacts" id="bt-facts"></div>
             <div class="mh" style="padding:4px 0 0">YOUR VERDICT</div>
             <div class="btverd" id="bt-verd"><button data-vd="Good trade">Good trade</button><button data-vd="Bad entry">Bad entry</button><button data-vd="Would skip">Would skip</button><button data-vd="Better entry higher">Better entry higher</button></div>
-            <div class="mh" style="padding:4px 0 0">NOTE FOR THIS CHART</div>
-            <textarea id="bt-ntext" placeholder="Why was this a good or bad entry? Where would you have shorted?"></textarea>
-            <div class="sm" id="bt-pin">Click the chart to pin the note to a candle (optional).</div>
-            <div style="display:flex;gap:8px"><button class="sbtn pri" id="bt-nsave" style="flex:1;height:32px">Save note</button></div>
-            <div class="mh" style="padding:4px 0 0">SAVED NOTES ON THIS CHART</div>
-            <div id="bt-notes" style="display:flex;flex-direction:column;gap:6px"></div>
+            <div class="mh" style="padding:4px 0 0">NOTES ON THIS CHART</div>
+            <div id="bt-notes" class="cn-list"></div>
+            <div class="sm cn-hint">Right-click the chart to add a note. The live chart shows the same notes.</div>
           </aside>
         </div>
       </div>
@@ -345,6 +327,13 @@ __APP_CSS__
 </div></div>
 </div>
 <div id="ctxm" class="hidden" role="menu"></div>
+<div id="cn-ed" class="hidden" role="dialog" aria-label="Chart note">
+  <div class="cn-eh"><b class="cn-k" id="cn-k">1</b><span class="cn-hd"><span id="cn-meta"></span><span id="cn-st">New note</span></span>
+    <button class="cn-del hidden" id="cn-del" title="Delete this note">Delete</button></div>
+  <textarea id="cn-tx" rows="3" spellcheck="true" placeholder="Write your note..."></textarea>
+  <div class="cn-ef"><span><kbd>Enter</kbd> save</span><span><kbd>Shift</kbd>+<kbd>Enter</kbd> new line</span><span><kbd>Esc</kbd> discard</span></div>
+</div>
+<div id="cn-tip" class="hidden"></div>
 <div id="menu" class="hidden">
   <div class="mh">SWITCHES</div>
   <label class="tgl mt auto" id="auto-wrap" title="ON = the bot places orders at TradeZero for the watchlist"><input type="checkbox" id="t-auto"><span class="sw"></span><span>Auto-trade</span></label>

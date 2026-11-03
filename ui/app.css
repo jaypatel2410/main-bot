@@ -1019,3 +1019,59 @@ aside,#side{background:rgba(6,9,14,.6)}
 .msrow b{font-family:Inter,"Segoe UI",sans-serif;font-weight:700}
 .msrow .up{color:#34d399}.msrow .up.neg{color:#fb7185}
 .msrow:hover{background:rgba(255,255,255,.04)}.msrow.sel{background:rgba(99,102,241,.1);box-shadow:inset 2px 0 0 #6366f1}
+
+/* ---------------- 3.14 fixes ----------------
+   The top bar blurs what is behind it (backdrop-filter), which makes it a stacking context: the timeframe menu's
+   z-index only counted INSIDE the bar, so the side panel was drawn over it and swallowed the clicks. Lifting the
+   whole bar above the panel puts the menu back on top.  Flatten all now sits in the bar, next to the account. */
+header{position:relative;z-index:40}
+#flat-btn{flex:none;height:28px;padding:0 13px;border-radius:999px;font-size:12px;font-weight:600;letter-spacing:.01em}
+header.compact3 #flat-btn{padding:0 10px}
+
+/* ---------------- 3.14 chart notes: right click -> Add note; a numbered badge on the candle and price ----------------
+   The note colour is the cream of the badges drawn on the chart (09b_chart_notes.js), so the editor, the hover card and
+   the backtest list read as the same object as the badge. */
+#ctxm .cd{height:1px;background:rgba(255,255,255,.07);margin:4px 6px}
+#ctxm .ci{display:inline-block;width:18px;color:var(--muted);font-weight:700}
+#ctxm .cpri,#ctxm .cpri .ci{color:#fde68a}
+#ctxm .cdanger,#ctxm .cdanger .ci{color:var(--neg)}
+.cn-hot canvas{cursor:pointer!important}
+#cn-ed{position:fixed;z-index:85;width:320px;max-width:calc(100vw - 16px);display:flex;flex-direction:column;gap:6px;padding:10px 12px 8px 15px;
+background:rgba(15,20,30,.97);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.09);border-radius:12px;
+box-shadow:0 18px 50px rgba(0,0,0,.6),inset 3px 0 0 #fde68a}
+#cn-ed.hidden,#cn-tip.hidden{display:none}
+.cn-eh{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--muted);min-width:0}
+.cn-hd{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+#cn-meta{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--font-data);font-variant-numeric:tabular-nums;color:var(--muted)}
+#cn-st{font-size:10.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cn-k{flex:none;display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:10px;
+background:#fde68a;color:#1c1606;font:700 11.5px/1 Bahnschrift,"Segoe UI",sans-serif;box-shadow:0 0 0 1.5px rgba(0,0,0,.8)}
+.cn-del{flex:none;height:22px;padding:0 9px;border-radius:6px;border:1px solid rgba(244,63,94,.3);background:none;color:var(--neg);font-size:11.5px;cursor:pointer}
+.cn-del:hover{background:rgba(244,63,94,.12)}.cn-del.arm{background:var(--red);border-color:var(--red);color:#fff}
+.cn-del.hidden{display:none}
+#cn-tx{width:100%;min-height:66px;max-height:240px;resize:none;border:0;outline:none;background:none;color:#f1f5f9;font:13.5px/1.5 var(--font-ui);padding:2px 0}
+#cn-tx::placeholder{color:var(--dim)}
+.cn-ef{display:flex;justify-content:flex-start;align-items:center;gap:12px;padding-top:7px;border-top:1px solid rgba(255,255,255,.06);
+font-size:10.5px;color:var(--dim);white-space:nowrap}
+.cn-ef kbd{font-size:10px;padding:0 4px;line-height:1.5}
+#cn-tip{position:fixed;z-index:84;max-width:300px;pointer-events:none;padding:8px 11px 8px 14px;background:rgba(15,20,30,.97);
+border:1px solid rgba(255,255,255,.09);border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.55),inset 3px 0 0 #fde68a}
+.cn-th{display:flex;align-items:center;gap:8px;font:11.5px var(--font-data);color:var(--muted);margin-bottom:5px}
+.cn-tt{font-size:12.5px;line-height:1.5;color:#f1f5f9;white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:hidden}
+.cn-tf{margin-top:6px;font-size:10.5px;color:var(--dim)}
+.cn-list{display:flex;flex-direction:column;gap:6px}
+.cn-row{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;padding:9px 10px;border-radius:10px;cursor:pointer;
+border:1px solid rgba(255,255,255,.06);background:rgba(15,20,30,.5);color:inherit;font:inherit}
+.cn-row:hover{border-color:rgba(253,230,138,.35);background:rgba(253,230,138,.04)}
+.cn-rb{display:flex;flex-direction:column;gap:3px;min-width:0}
+.cn-rm{font:11px var(--font-data);color:var(--dim)}
+.cn-rt{font-size:12.5px;line-height:1.45;color:var(--text);white-space:pre-wrap;word-break:break-word}
+.cn-hint{white-space:normal;line-height:1.5}
+
+/* ---------------- 3.14 bid x ask next to the last price (tick by tick; in a halt it shows where the stock is indicated
+   to open, so the box turns amber with the HALTED chip) ---------------- */
+#q-ba{display:inline-flex;align-items:baseline;gap:6px;padding:2px 9px;border-radius:6px;border:1px solid rgba(255,255,255,.1);
+font:600 13px var(--font-data);font-variant-numeric:tabular-nums;white-space:nowrap;align-self:center;line-height:1.35}
+#q-ba i{font-style:normal;font-weight:400;color:var(--dim)}
+#q-bid{color:#34d399}#q-ask{color:#fb7185}
+#q-ba.halt{border-color:rgba(251,191,36,.55);background:rgba(251,191,36,.08)}

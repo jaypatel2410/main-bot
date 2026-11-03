@@ -50,12 +50,25 @@ class SymState:
         self.dirty = True
         self.has_open = False
         self.halted = False
+        self.ba = (None, None)          # 3.14: (bid, ask) from IB's quote - pushed on every change, also in a halt
         self.sig_json = ""
         self.alerted = set()
         self.closed_alerted = set()
         self.initial_done = False
         self.loaded_day = None
         self.reload_day = None
+def bid_ask(ticker):
+    """3.14: (bid, ask) of an IB ticker; None where IB has no price (nan, or -1 / 0 = no quote)."""
+    out = []
+    for k in ("bid", "ask"):
+        try:
+            v = float(getattr(ticker, k, None))
+        except (TypeError, ValueError):
+            v = None
+        out.append(v if v is not None and v > 0 and not math.isnan(v) else None)
+    return tuple(out)
+
+
 def pick_details(details):
     primaries = ("NASDAQ", "NYSE", "AMEX", "ARCA", "BATS", "ISLAND", "NYSE ARCA", "NYSEAMERICAN")
     stk = [d for d in details if getattr(d.contract, "secType", "STK") == "STK"] or list(details)
@@ -1291,6 +1304,10 @@ class Backend:
             log.info("%s %s", st.sym, "HALTED" if halted else "trading resumed")
             self._toast("warn" if halted else "info", f"{st.sym} {'HALTED' if halted else 'resumed trading'}")
             self.bridge.quote(st.gen, app.make_quote(st))
+        ba = bid_ask(ticker)                      # 3.14: bid / ask - a halt has no trades, but IB still quotes where it
+        ba_new = ba != st.ba                      # will open, so every quote change goes to the window
+        if ba_new:
+            st.ba = ba
         px = None
         traded = False
         for tk in (getattr(ticker, "ticks", None) or ()):
@@ -1301,6 +1318,8 @@ class Backend:
             elif tt in (5, 71, 48, 77):           # sizes / RT volume = a trade printed
                 traded = True
         if not traded:
+            if ba_new:
+                self.bridge.quote(st.gen, app.make_quote(st))
             return
         if px is None:
             px = ticker.last
@@ -1309,16 +1328,22 @@ class Backend:
         except (TypeError, ValueError):
             return
         if not (px > 0) or math.isnan(px):
+            if ba_new:
+                self.bridge.quote(st.gen, app.make_quote(st))
             return
         net = self.now_et()
         secs = net.hour * 3600 + net.minute * 60 + net.second
         if secs < 4 * 3600 or secs >= 20 * 3600:
+            if ba_new:
+                self.bridge.quote(st.gen, app.make_quote(st))
             return
         t = calendar.timegm(net.timetuple()) // 60 * 60
         st.last_tick_wall = time.monotonic()
         lv = st.live
         if t == lv[0]:
             if px == lv[4] and lv[3] <= px <= lv[2]:
+                if ba_new:
+                    self.bridge.quote(st.gen, app.make_quote(st))
                 return
             lv[2] = max(lv[2], px)
             lv[3] = min(lv[3], px)
@@ -1326,8 +1351,10 @@ class Backend:
         elif t > lv[0]:
             st.live = [t, px, px, px, px, 0.0]    # new minute before IB's candle arrives
         else:
+            if ba_new:
+                self.bridge.quote(st.gen, app.make_quote(st))
             return
-        self._push_live(st)
+        self._push_live(st)                       # (the quote it sends carries the bid / ask too)
 
     async def _after_new_bar(self, st):
         await asyncio.sleep(app.FINALIZE_DELAY_SEC)

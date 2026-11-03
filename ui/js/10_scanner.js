@@ -23,7 +23,7 @@
       (r.watch ? `<div class="jt">On the bot watchlist</div><div class="bcnow" style="white-space:normal">${esc(r.status)}</div>` : '') +
       `<div class="jt">What each strategy needs</div>${need || '<div class="sm">-</div>'}` +
       `<div class="sm" style="white-space:normal;line-height:1.5">The strategies read only watchlist stocks. ${info.scanOn ? `The bot's own scanner adds stocks up ${info.scanUp}%+ by itself (07:00-15:00).` : 'The auto short-scanner is off - add stocks yourself.'}</div>` +
-      `<div style="display:flex;gap:8px;margin-top:auto"><button class="sbtn" style="flex:1;height:32px" data-scc="${esc(r.sym)}">Open chart</button>` +
+      `<div style="display:flex;gap:8px;margin-top:auto">` +
       (r.watch ? '' : `<button class="sbtn pri" style="flex:1;height:32px" data-scw="${esc(r.sym)}">Add to watchlist</button>`) +
       `<button class="sbtn" style="height:32px" data-scf="${esc(r.sym)}" title="Favorites">${isFav(r.sym) ? '&#9829; Favorite' : '&#9825; Favorite'}</button>` + '</div>';
   }
@@ -42,7 +42,11 @@
       `<span class="scbtn"><button class="sbtn" data-scc="${esc(r.sym)}">Chart</button>` +
       (r.watch ? '<button class="sbtn" disabled>Watching</button>' : `<button class="sbtn" data-scw="${esc(r.sym)}">+ Watch</button>`) + '</span></div>').join('')
       : `<div class="oempty">${p.err ? esc(p.err) : 'Waiting for the first scan (IBKR top % gainers)...'}</div>`;
-    const sel = rows.find(x => x.sym === scanSel);
+    scanSelect();
+  }
+  function scanSelect(){                                     // 3.14: highlight + details only - never rebuild the rows
+    document.querySelectorAll('#sc-list [data-sc]').forEach(el => el.classList.toggle('sel', el.dataset.sc === scanSel));
+    const sel = ((scan && scan.rows) || []).find(x => x.sym === scanSel);
     $('sc-det').innerHTML = sel ? scanDetail(sel) : '<div class="sm">Click a row for the details.</div>';
   }
   // main chart page: compact live scanner under the watchlist (symbol, last, % up); click = load that chart
@@ -65,11 +69,13 @@
     if (w) { api('bot_add', w.dataset.scw); toast({kind: 'info', text: `${w.dataset.scw} added to the watchlist`}); return; }
     const f = e.target.closest('[data-scf]');
     if (f) { favToggle(f.dataset.scf); return; }
-    const rw = e.target.closest('[data-sc]'); if (rw) { scanSel = rw.dataset.sc; renderScan(); }
+    const rw = e.target.closest('[data-sc]'); if (rw) { scanSel = rw.dataset.sc; scanSelect(); }
   });
   $('scr-scan').addEventListener('dblclick', e => {           // 3.12.1: double click a row = open its chart
     if (e.target.closest('button')) return;
-    const rw = e.target.closest('[data-sc]'); if (!rw) return;
-    api('load_symbol', rw.dataset.sc).then(res => { if (res && res.recent) setRecent(res.recent); }); showScreen('chart');
+    const rw = e.target.closest('[data-sc]');                 // a scan landing between the two clicks: take the row
+    const sy = rw ? rw.dataset.sc : (e.target.closest('#sc-list') ? scanSel : '');     // the first click selected
+    if (!sy) return;
+    api('load_symbol', sy).then(res => { if (res && res.recent) setRecent(res.recent); }); showScreen('chart');
   });
 

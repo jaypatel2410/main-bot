@@ -524,7 +524,19 @@ class JsApi:
         try:
             B = self._btm()
             st = B.strat(str(k))
-            return {"ok": True, **B.result(st["folder"], str(rid))}
+            cn = self._cn()
+            try:                                         # 3.14: this strategy's old chart notes become shared chart notes
+                n = B.notes_move(st["folder"], cn)
+                if n:
+                    log.info("%s backtest notes of %s moved to the chart notes", n, k)
+            except Exception:
+                log.exception("moving the backtest notes")
+            r = B.result(st["folder"], str(rid))
+            allc = cn.everything()                       # the trade list: which charts have notes (live or backtest)
+            for t in r["trades"]:
+                ns = allc.get(f"{t['tk']}|{t['day']}") or []
+                t["nnote"], t["note1"] = len(ns), (ns[-1]["text"][:120] if ns else "")
+            return {"ok": True, **r}
         except Exception as exc:
             log.exception("bt_result")
             return {"ok": False, "error": str(exc)}
@@ -549,6 +561,34 @@ class JsApi:
             n = B.notes_save(B.strat(str(k))["folder"], str(tk), str(day), verdict, text, px, hms, nid, bool(delete))
             return {"ok": True, **n}
         except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    # ---- 3.14: chart notes (right click on the live chart or a backtest chart -> Add note; core/data/chart_notes.py) ----
+    def _cn(self):
+        import chart_notes
+        return chart_notes.store(DATA_DIR)
+
+    def notes_get(self, tk):
+        """Every note of a ticker (all days) - the live chart shows the loaded days, a backtest chart its day."""
+        try:
+            return {"ok": True, "notes": self._cn().for_ticker(tk)}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc), "notes": []}
+
+    def note_save(self, tk, day, t=None, px=None, text="", nid=None, src="live"):
+        try:
+            return {"ok": True, "note": self._cn().save(tk, day, t, px, text, nid, src)}
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        except Exception as exc:
+            log.exception("note_save")
+            return {"ok": False, "error": f"Could not save the note: {exc}"}
+
+    def note_delete(self, nid):
+        try:
+            return {"ok": self._cn().delete(nid)}
+        except Exception as exc:
+            log.exception("note_delete")
             return {"ok": False, "error": str(exc)}
 
     # ---- 3.12.1: favorites (permanent list of tickers, e.g. multi-day runners) ----
