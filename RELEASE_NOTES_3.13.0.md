@@ -83,3 +83,13 @@ It reads the moved Jan–Mar days from `market_data_vault_ARCHIVE.db`. Expected:
   - Applies to `lh_combined_backtester.py` (`MIN_SHORT_PRICE`), which the Dashboard and the bulk runner use, and to `jay_read_short_backtest.py`.
   - The live strategy files are unchanged.
   - Effect on the 1,097-day test: Jay-read 2 unchanged (108); Jay-read v1.2 236 → 234.
+
+---
+
+# New look (2026-11-03)
+
+Styling only: no trading, order, strategy or backtest code changed.
+- Deep slate theme with an indigo accent; emerald / rose for wins and losses; glass panels on every screen.
+- Settings menu with icons; switch rows with the switch on the right; trading mode buttons green (Trading), amber (Alert only), grey (Off).
+- Connection pill glows green when connected; positions panel tabs; journal calendar tinted green / red.
+- Saved colors that were an earlier default switch to the new look; Colors -> Reset to default restores it.

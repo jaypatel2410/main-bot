@@ -23,9 +23,9 @@
       ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map(x => `<span class="h">${x}</span>`).join('');
     if (d.cal.length) for (let i = 0; i < d.cal[0].wd; i++) cal += '<span></span>';
     for (const c of d.cal) {
-      const v = c.pnl, bg = v == null || v === 0 ? '' : v > 0 ? `background:rgba(34,171,148,${Math.min(.6, .14 + v / 8000).toFixed(2)})`
-        : `background:rgba(242,54,69,${Math.min(.55, .16 - v / 4000).toFixed(2)})`;
-      cal += `<div class="c${v == null ? ' e' : ''}${c.today ? ' td' : ''}" style="${bg}" title="${plural(c.n, 'trade')}"><span>${c.d}</span><b>${v == null ? '&ndash;' : jm(v)}</b></div>`;
+      const v = c.pnl, bg = v == null || v === 0 ? '' : v > 0 ? `background:rgba(16,185,129,${Math.min(.32, .08 + v / 12000).toFixed(2)})`
+        : `background:rgba(244,63,94,${Math.min(.32, .08 - v / 6000).toFixed(2)})`;   // 3.14: tinted cells, coloured text
+      cal += `<div class="c${v == null ? ' e' : v > 0 ? ' pos' : v < 0 ? ' neg' : ''}${c.today ? ' td' : ''}" style="${bg}" title="${plural(c.n, 'trade')}"><span>${c.d}</span><b>${v == null ? '&ndash;' : jm(v)}</b></div>`;
     }
     $('j-cal').innerHTML = cal + '</div>';
     const pts = [0].concat(d.eq || []), W = Math.max(300, Math.round($('j-eq').getBoundingClientRect().width) || 800), H = 240;
