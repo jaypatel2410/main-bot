@@ -710,6 +710,8 @@ class Backend:
             if self.status.get("conn") == "warning":
                 self._set_status("connected", f"Data farm OK - {msg}")
             return
+        if code == 162 and "api scanner subscription cancelled" in msg.lower():
+            return
         log.info("IB %s (req %s): %s", code, req_id, msg)
         if code == 326:
             self.cid_conflict = True
