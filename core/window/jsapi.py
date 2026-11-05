@@ -51,7 +51,7 @@ class JsApi:
                 self._settings.set(k, bool(data[k]))
         if str(data.get("tf", "")) in Settings.TIMEFRAMES:
             self._settings.set("tf", str(data["tf"]))
-        if str(data.get("otab", "")) in ("pos", "orders", "long", "loc", "alr"):     # 3.10: the orders-panel tab
+        if str(data.get("otab", "")) in ("pos", "orders", "long", "loc", "alr", "news"):     # 3.10: the orders-panel tab
             self._settings.set("otab", str(data["otab"]))
         for k, (lo, hi) in Settings.SIZES.items():
             if k in data:
@@ -320,6 +320,42 @@ class JsApi:
             if turso.cloud() is not None:
                 self._settings._cloud_load()
         threading.Thread(target=go, daemon=True, name="turso-connect").start()
+        return {"ok": True, "file": path}
+
+    # ---- 3.14: real-time news (News tab) + its keys (Settings > Keys and Discord) ----
+    def news_list(self):
+        nf = getattr(self._backend, "news", None)
+        if nf is None:
+            return {"ok": False, "items": [], "sym": "", "status": {}}
+        return {"ok": True, **nf.list(), "status": dict(nf.status)}
+
+    def open_url(self, url):
+        """A news story / SEC filing in the default browser (http(s) links only)."""
+        url = str(url or "")
+        if not url.startswith(("https://", "http://")):
+            return {"ok": False}
+        import webbrowser
+        webbrowser.open(url)
+        return {"ok": True}
+
+    def news_keys(self):
+        return {"alpacaId": env_get("ALPACA_API_KEY", ""), "hasSecret": bool(env_get("ALPACA_SECRET_KEY", "")),
+                "secMail": env_get("SEC_CONTACT_EMAIL", "")}
+
+    def news_save(self, key_id, secret, mail):
+        key_id, secret, mail = str(key_id or "").strip(), str(secret or "").strip(), str(mail or "").strip()
+        if mail and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", mail):
+            return {"ok": False, "error": "That is not an e-mail address"}
+        upd = {"ALPACA_API_KEY": key_id, "SEC_CONTACT_EMAIL": mail}
+        if secret:                                     # empty box = keep the saved secret
+            upd["ALPACA_SECRET_KEY"] = secret
+        try:
+            path = env_write(upd)
+        except Exception as exc:
+            return {"ok": False, "error": f"Could not save: {exc}"}
+        nf = getattr(self._backend, "news", None)
+        if nf is not None:
+            nf.restart()
         return {"ok": True, "file": path}
 
     def tz_keys(self):
@@ -640,6 +676,11 @@ class JsApi:
             got = cache.day(tk, (ddate(y, m, d) - ddate(1970, 1, 1)).days) if cache is not None else None
         except Exception:
             got = None
+        if not (got and got[0]):                         # not saved anywhere (today, or a day never opened): ask IB
+            try:
+                got = (self._backend.fetch_day(tk, day), None)
+            except Exception as exc:
+                return {"ok": False, "error": f"no candles for {tk} {day} ({exc})"}
         if got and got[0]:
             out, cv, cpv = [], 0.0, 0.0
             for t, o, h, l, c, v in got[0]:

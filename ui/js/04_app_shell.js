@@ -104,6 +104,9 @@
       $('k-st').textContent = r.hasSecret ? 'Secret saved' : 'No keys saved yet';
     });
     dcLoad();
+    api('news_keys').then(k => { k = k || {}; if (document.activeElement !== $('n-id')) $('n-id').value = k.alpacaId || '';
+      if (document.activeElement !== $('n-mail')) $('n-mail').value = k.secMail || '';
+      $('n-sec').placeholder = k.hasSecret ? 'a secret is saved - leave empty to keep it' : 'paste the secret key'; });
     api('turso_keys').then(t => { t = t || {}; if (document.activeElement !== $('t-url')) $('t-url').value = t.url || ''; $('t-tok').placeholder = t.hasToken ? 'a token is saved - leave empty to keep it' : 'paste the auth token'; });
     cloudStatus();
     api('bt_list').then(r => { if (r && r.ok && document.activeElement !== $('bt-vault')) $('bt-vault').value = r.vault || ''; });   // 3.13.1: vault location
@@ -123,6 +126,13 @@
     });
   }
   $('cloud').addEventListener('click', () => openSettings('env'));
+  $('n-save').addEventListener('click', () => {               // 3.14: Alpaca + SEC (the News tab)
+    $('n-st').textContent = 'Saving...';
+    api('news_save', $('n-id').value.trim(), $('n-sec').value.trim(), $('n-mail').value.trim()).then(r => {
+      if (r && r.ok) { $('n-sec').value = ''; $('n-st').textContent = 'Saved - the news feeds reconnect now (status in the News tab)'; toast({kind: 'info', text: 'News keys saved'}); }
+      else $('n-st').textContent = (r && r.error) || 'Could not save';
+    });
+  });
   $('t-save').addEventListener('click', () => {
     $('t-st').textContent = 'Connecting...';
     api('turso_save', $('t-url').value.trim(), $('t-tok').value.trim()).then(r => {
@@ -215,9 +225,9 @@
     const el = $('toast'); el.className = m.kind === 'err' ? 'err' : m.kind === 'warn' ? 'warn' : '';
     el.textContent = m.text; clearTimeout(toastTimer); toastTimer = setTimeout(() => el.className = 'hidden', m.kind === 'err' ? 9000 : 6000);
   }
-  let sideFrac = 0.22, scanFrac = 0.50, ordFrac = 0.28, ordAll = false, oTab = 'orders', lng = null;
+  let newsFrac = 0.38, sideFrac = 0.22, scanFrac = 0.50, ordFrac = 0.28, ordAll = false, oTab = 'orders', lng = null;
   function save(){ api('save_settings', {ext: ext, skipped: showSkip, sound: sound, panel: !$('main').classList.contains('nopanel'),
-                                         wside: sideFrac, scanh: scanFrac, tf: String(tf),
+                                         wside: sideFrac, scanh: scanFrac, newsw: newsFrac, tf: String(tf),
                                          orders: !$('leftcol').classList.contains('oclosed'), ordall: ordAll, ordh: ordFrac,
                                          otab: oTab}); }
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -225,6 +235,7 @@
     const mw = $('main').getBoundingClientRect().width || window.innerWidth;
     const px = clamp(sideFrac * mw, 240, mw * 0.45);                 // 3.11: the watchlist (left), at least 240 px
     $('main').style.setProperty('--side-w', Math.round(px) + 'px');
+    $('bottom').style.setProperty('--news-w', (newsFrac * 100).toFixed(2) + '%');
     $('side').style.setProperty('--scan-h', ((1 - scanFrac) * 100).toFixed(2) + '%');   // scanner height = what the watchlist leaves
     const lh = $('leftcol').getBoundingClientRect().height || window.innerHeight;
     $('leftcol').style.setProperty('--ord-h', Math.round(clamp(ordFrac * lh, 96, lh * 0.7)) + 'px');
@@ -238,6 +249,9 @@
         if (kind === 'col') {
           const r = $('main').getBoundingClientRect();
           sideFrac = clamp((ev.clientX - r.left) / r.width, 0.12, 0.45);
+        } else if (kind === 'ncol') {
+          const r = $('bottom').getBoundingClientRect();
+          newsFrac = clamp((ev.clientX - r.left) / r.width, 0.15, 0.75);
         } else if (kind === 'orow') {
           const r = $('leftcol').getBoundingClientRect();
           ordFrac = clamp((r.bottom - ev.clientY) / r.height, 0.10, 0.70);
@@ -254,9 +268,9 @@
       };
       window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
     });
-    el.addEventListener('dblclick', () => { if (kind === 'col') sideFrac = 0.22; else if (kind === 'orow') ordFrac = 0.28; else scanFrac = 0.50; applySizes(); save(); });
+    el.addEventListener('dblclick', () => { if (kind === 'col') sideFrac = 0.22; else if (kind === 'ncol') newsFrac = 0.38; else if (kind === 'orow') ordFrac = 0.28; else scanFrac = 0.50; applySizes(); save(); });
   }
-  dragSplit($('vsplit'), 'col'); dragSplit($('hsplit'), 'row'); dragSplit($('osplit'), 'orow');
+  dragSplit($('vsplit'), 'col'); dragSplit($('hsplit'), 'row'); dragSplit($('osplit'), 'orow'); dragSplit($('nsplit'), 'ncol');
   window.addEventListener('resize', applySizes);
   applySizes();
   function setRecent(list){ $('recent').innerHTML = (list || []).map(s => `<option value="${esc(s)}">`).join(''); }

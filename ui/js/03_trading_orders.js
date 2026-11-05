@@ -228,6 +228,39 @@
   $('tab-loc').addEventListener('click', () => showTab('loc'));
   $('tab-alr').addEventListener('click', () => showTab('alr'));
 
+  // ---- 3.14: the News pane (left of the tabs) - the chart's stock only: Benzinga headlines (Alpaca stream) and its SEC
+  // filings, since 04:00 ET of the previous weekday, newest first. Offerings in red. Click a row = open the story. ----
+  let news = [], nwStatus = {}, nwF = 'all', nwSym = '';
+  const nwFresh = new Set();
+  function renderNews(){
+    const st = nwStatus || {};
+    $('nw-sym').textContent = nwSym || '';
+    $('nw-st').textContent = `Benzinga ${st.alpaca || '-'}  ·  SEC ${st.sec || '-'}`;
+    const S = news.filter(n => nwF === 'all' || (nwF === 'off' && n.tags.includes('OFFERING')) || (nwF === 'sec' && n.src === 'SEC')
+      || (nwF === 'bz' && n.src !== 'SEC'));
+    const today = new Date().toLocaleDateString('en-CA', {timeZone: 'America/New_York'});
+    $('nw-list').innerHTML = S.length ? S.map(n => `<div class="nwrow nwgrid${n.tags.includes('OFFERING') ? ' off' : ''}${nwFresh.has(n.id) ? ' new' : ''}"` +
+        `${n.url ? ` data-nu="${esc(n.url)}"` : ''} title="${esc(n.head)}"><span class="tm">${esc(n.et.slice(0, 5))}${n.day !== today ? `<i>${esc(n.day.slice(5))}</i>` : ''}</span>` +
+        `<span class="hd">${n.tags.filter(t => t !== 'EARNINGS').map(t => `<span class="tg ${t === 'R/S' ? 'RS' : esc(t)}">${esc(t)}</span>`).join('')}${esc(n.head)}</span>` +
+        `<span class="sr">${esc(n.src === 'SEC' ? 'SEC ' + n.form : n.src)}</span></div>`).join('')
+      : `<div class="oempty">${!nwSym ? 'Open a chart - its news shows here.' : news.length ? 'No news in this filter.' :
+          `No news for ${esc(nwSym)} since the previous weekday${/off/.test((st.alpaca || '') + (st.sec || '')) ? ' - add the Alpaca keys and your e-mail for the SEC in Settings > Keys and Discord' : ''}.`}</div>`;
+    nwFresh.clear();
+  }
+  $('nw-f').addEventListener('click', e => { const b = e.target.closest('[data-v]'); if (!b) return; nwF = b.dataset.v;
+    document.querySelectorAll('#nw-f button').forEach(x => x.classList.toggle('on', x === b)); renderNews(); });
+  $('nw-list').addEventListener('click', e => { const r = e.target.closest('[data-nu]'); if (r) api('open_url', r.dataset.nu); });
+  function newsAdd(n){
+    if (news.some(x => x.id === n.id) || (nwSym && !n.tk.includes(nwSym))) return;
+    news.push(n); news.sort((a, b) => b.t - a.t); if (news.length > 300) news.length = 300;
+    nwFresh.add(n.id);
+    if (n.tags.includes('OFFERING') && Date.now() / 1000 - n.t < 600)
+      toast({kind: 'err', text: `OFFERING news: ${nwSym} - ${n.head.slice(0, 120)}`});
+    renderNews();
+  }
+  function newsReset(s){ nwSym = s || ''; news = []; renderNews(); }
+  whenApi(() => api('news_list').then(r => { if (r) { nwSym = r.sym || ''; news = r.items || []; nwStatus = r.status || {}; renderNews(); } }));
+
   // ---------------- 3.9.0: locate window (orders panel -> Locates) ----------------
   let loc = null, locRecv = 0;
   const lcMoney = v => v == null ? '-' : '$' + Number(v).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});

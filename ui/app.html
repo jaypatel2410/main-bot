@@ -71,6 +71,18 @@ __APP_CSS__
     </div></div>
   </section>
   <div id="osplit" class="split" title="Drag to resize the chart / orders - double-click to reset"></div>
+  <div id="bottom">
+  <section id="newsp">
+    <div class="oh"><span class="otab on" style="cursor:default">News <b id="nw-sym"></b></span><span class="m" id="nw-st">-</span><div class="spacer"></div>
+      <div class="seg2" id="nw-f"><button data-v="all" class="on">All</button><button data-v="off">Offerings</button><button data-v="sec">SEC</button><button data-v="bz">Benzinga</button></div></div>
+    <div class="obody o-news">
+      <div class="ocol">
+        <div class="ohd nwgrid"><span>Time</span><span>Headline</span><span>Source</span></div>
+        <div class="olist" id="nw-list"></div>
+      </div>
+    </div>
+  </section>
+  <div id="nsplit" class="split" title="Drag to resize the news / orders - double-click to reset"></div>
   <section id="orders">
     <div class="oh"><button class="otab" id="tab-pos" title="Open positions (bot shorts and premarket longs) and today's closed trades">Positions<b id="pos-n"></b></button><button class="otab on" id="tab-ord" title="TradeZero orders: pending and filled">Orders</button><button class="otab" id="tab-loc" title="Locate shares yourself (TradeZero's offers, $ per share, total) - and today's located shares">Locates<b id="lc-badge"></b></button><button class="otab" id="tab-alr" title="Price alerts: Alt + click on the chart, or add one here">Alerts<b id="al-n"></b></button>
       <span class="obadge o-ord" id="o-bp">Pending <b>0</b></span><span class="obadge o-ord" id="o-bf">Filled <b>0</b></span>
@@ -128,6 +140,7 @@ __APP_CSS__
       </div>
     </div>
   </section>
+  </div>
   </div>
   <div id="vsplit" class="split" title="Drag to resize the chart / side panel - double-click to reset"></div>
   <aside id="side">
@@ -250,7 +263,9 @@ __APP_CSS__
   <div class="sch"><span class="st">Notes</span><span class="sm" id="nt-meta">-</span><div class="spacer"></div>
     <input class="ntin" id="nt-q" placeholder="Search ticker or text" autocomplete="off" spellcheck="false">
     <div class="seg2" id="nt-src"><button data-v="all" class="on">All</button><button data-v="live">Live</button><button data-v="backtest">Backtest</button></div>
-    <span class="sm">Group by</span><div class="seg2" id="nt-grp"><button data-v="day" class="on">Day</button><button data-v="tk">Ticker</button></div></div>
+    <span class="sm">Group by</span><div class="seg2" id="nt-grp"><button data-v="day" class="on">Day</button><button data-v="tk">Ticker</button></div>
+    <span class="sm" style="margin-left:8px">New</span><input class="ntin" id="nt-ntk" placeholder="Ticker" style="width:80px;text-transform:uppercase" maxlength="12" autocomplete="off" spellcheck="false">
+    <input class="ntin" id="nt-nday" type="date" style="width:140px"><button class="sbtn" id="nt-open">Open day</button></div>
   <div class="ntv" id="nt-verd"></div>
   <div class="ntb">
     <div class="ntlist" id="nt-list"></div>
@@ -258,7 +273,11 @@ __APP_CSS__
       <div class="ntdh"><b id="nt-tk"></b><span class="sm" id="nt-day"></span><span id="nt-vd"></span><div class="spacer"></div>
         <button class="sbtn" id="nt-live">Open live chart</button><button class="sbtn" id="nt-bt" hidden>Open in backtest</button></div>
       <div class="ntfacts" id="nt-facts"></div>
-      <div class="ntchart"><div id="nt-chart"></div><div class="sm ntcmsg" id="nt-cmsg"></div></div>
+      <div class="ntchart" id="nt-cbox"><div id="nt-chart"></div><div class="sm ntcmsg" id="nt-cmsg"></div></div>
+      <div class="ntgrip" id="nt-grip" title="Drag to make the chart taller or shorter - double-click to reset"></div>
+      <div class="ntadd"><textarea id="nt-new" placeholder="Write a note for this day... (click the chart first to pin it to a candle and price)"></textarea>
+        <div class="ntaddb"><span class="sm" id="nt-pin">Not pinned - click the chart to pin it to a candle and price</span><div class="spacer"></div>
+          <button class="sbtn" id="nt-unpin" hidden>Unpin</button><button class="sbtn pri" id="nt-add">Add note</button></div></div>
       <div class="mh" style="padding:2px 0 0">NOTES ON THIS CHART <span class="sm" style="letter-spacing:0;text-transform:none">- right click any chart to add one</span></div>
       <div id="nt-notes" class="ntnotes"></div>
     </div>
@@ -338,6 +357,13 @@ __APP_CSS__
   <label>Auth token<input id="t-tok" type="password" autocomplete="off" spellcheck="false" placeholder="leave empty to keep the saved token"></label>
   <div class="kst" id="t-st"></div>
   <div class="kbtns"><button class="sbtn pri" id="t-save">Save and connect</button></div>
+  <hr>
+  <div class="kt">Real-time news (News tab)</div>
+  <label>Alpaca API key ID<input id="n-id" autocomplete="off" spellcheck="false" placeholder="free account: alpaca.markets - API keys"></label>
+  <label>Alpaca secret key<input id="n-sec" type="password" autocomplete="off" spellcheck="false" placeholder="leave empty to keep the saved secret"></label>
+  <label>Your e-mail for the SEC<input id="n-mail" autocomplete="off" spellcheck="false" placeholder="name@example.com - the SEC asks every program reading its filings for one"></label>
+  <div class="kst" id="n-st"></div>
+  <div class="kbtns"><button class="sbtn pri" id="n-save">Save and connect</button></div>
 </div></div>
 <div id="stop-ov" class="kov hidden"><div class="kbox">
   <div class="kt" id="s-title">Move the stop</div>

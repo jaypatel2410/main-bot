@@ -114,6 +114,7 @@
       if (typeof s.wside === 'number') sideFrac = clamp(s.wside, 0.12, 0.45);
       if (typeof s.scanh === 'number') scanFrac = clamp(s.scanh, 0.12, 0.88);
       if (typeof s.ordh === 'number') ordFrac = clamp(s.ordh, 0.10, 0.70);
+      if (typeof s.newsw === 'number') newsFrac = clamp(s.newsw, 0.15, 0.75);
       if (s.orders === false) $('leftcol').classList.add('oclosed');
       ordAll = !!s.ordall; $('o-all').checked = ordAll;
       const t0 = s.otab || 'pos';                                // 3.10: Positions is the default tab
@@ -260,6 +261,9 @@
       overlay.refresh(); renderPanel();
     },
     setScan(p){ scan = p; renderMiniScan(); if (screen === 'scan') renderScan(); },
+    news(n){ newsAdd(n); },
+    newsStatus(s){ nwStatus = s || {}; renderNews(); },
+    newsReset(s){ newsReset(s); },
     setLocate(p){ loc = p; locRecv = Date.now() / 1000; renderLoc(); },
     askClose(p){ askClose(p); },
     orderMsg(m){ toast(m); },

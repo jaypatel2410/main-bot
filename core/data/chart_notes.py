@@ -217,7 +217,8 @@ class Store:
         return out
 
     def save(self, tk, day, t=None, px=None, text="", nid=None, src="live"):
-        """A new note (nid None) or a changed text (nid given). Saved here at once; Turso in the background."""
+        """A new note (nid None) or a changed text (nid given; a t and px given move its pin too). Saved here at once;
+        Turso in the background."""
         tk, day = _clean_tk(tk), _clean_day(day)
         text = str(text or "").strip()[:MAX_TEXT]
         if not text:
@@ -234,6 +235,8 @@ class Store:
                 self.notes[nid] = n
             else:
                 n["text"], n["updated"] = text, now
+                if _num(t, int) is not None and _num(px, float) is not None:      # 3.14: pinned / moved from the Notes tab
+                    n["t"], n["px"] = _num(t, int), _num(px, float)
             self._mark(nid, "put", n)
             self._save()
             out = dict(n)

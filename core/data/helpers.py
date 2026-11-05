@@ -39,8 +39,9 @@ log = logging.getLogger("lh_app")
 # -----------------------------------------------------------------------------
 ENV_FILE_NAME = ".env"
 ENV_KEYS = ("TZ_API_KEY_ID", "TZ_API_SECRET", "TZ_ACCOUNT_ID", "TZ_ROUTE", "DISCORD_WEBHOOK_URL", "DISCORD_MENTION",
-            "IB_HOST", "IB_PORT", "IB_CLIENT_ID", "VAULT_DB", "TURSO_DATABASE_URL", "TURSO_AUTH_TOKEN")
-ENV_SECRET = ("TZ_API_KEY_ID", "TZ_API_SECRET", "TZ_ACCOUNT_ID", "DISCORD_WEBHOOK_URL", "TURSO_AUTH_TOKEN")
+            "IB_HOST", "IB_PORT", "IB_CLIENT_ID", "VAULT_DB", "TURSO_DATABASE_URL", "TURSO_AUTH_TOKEN", "ALPACA_API_KEY",
+            "ALPACA_SECRET_KEY", "SEC_CONTACT_EMAIL")
+ENV_SECRET = ("TZ_API_KEY_ID", "TZ_API_SECRET", "TZ_ACCOUNT_ID", "DISCORD_WEBHOOK_URL", "TURSO_AUTH_TOKEN", "ALPACA_SECRET_KEY")
 ENV_ALIASES = {"TZ_API_SECRET_KEY": "TZ_API_SECRET", "TRADEZERO_API_KEY_ID": "TZ_API_KEY_ID",
                "TRADEZERO_API_SECRET": "TZ_API_SECRET", "DISCORD_WEBHOOK": "DISCORD_WEBHOOK_URL"}
 ENV_TEMPLATE = """# LH Short Bot - every credential in one file (3.11).
@@ -71,6 +72,11 @@ VAULT_DB=
 # Turso cloud database (settings, favorites, backtests, notes, journals, vault): Settings > Keys and Discord
 TURSO_DATABASE_URL=
 TURSO_AUTH_TOKEN=
+
+# Real-time news (News tab): a free Alpaca account (alpaca.markets -> API keys) and your e-mail for the SEC
+ALPACA_API_KEY=
+ALPACA_SECRET_KEY=
+SEC_CONTACT_EMAIL=
 
 # Live trading is NOT switched on here: it needs ALLOW_LIVE_TRADING = True in main.py.
 """
@@ -1060,7 +1066,7 @@ def load_chart_lib():
 class Settings:
     KEYS = ("ext", "skipped", "sound", "panel", "orders", "ordall", "olong")
     TIMEFRAMES = ("1", "2", "5", "15", "30", "D")
-    SIZES = {"side": (0.15, 0.55), "scanh": (0.12, 0.88), "ordh": (0.10, 0.70),   # right column / bot panel / orders panel
+    SIZES = {"side": (0.15, 0.55), "scanh": (0.12, 0.88), "ordh": (0.10, 0.70), "newsw": (0.15, 0.75),   # right column / bot panel / orders panel
              "wside": (0.12, 0.45)}                                                # 3.11: the watchlist (left) column
 
     def __init__(self):

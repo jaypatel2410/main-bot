@@ -382,9 +382,27 @@ class Backend:
 
     def request_symbol(self, sym):
         asyncio.run_coroutine_threadsafe(self._load(sym), self.loop)
+        if getattr(self, "news", None) is not None:   # 3.14: the News pane follows the chart
+            self.news.set_symbol(sym)
 
     def request_reconnect(self):
         self.loop.call_soon_threadsafe(self._force_reconnect)
+
+    def _news_item(self, it):
+        """A new headline / filing (feed thread): to the News tab; an offering on a stock you follow -> Discord too."""
+        self.bridge.call("news", it)
+        if "OFFERING" not in it.get("tags", ()) or not app.NEWS_OFFERING_DISCORD:
+            return
+        bot, st = self.bot, self.state
+        watched = set(bot.syms if bot is not None else ()) | set(getattr(self, "scan_order", []) or [])
+        if st is not None and st.sym:
+            watched.add(st.sym)
+        hit = [s for s in it.get("tk", []) if s in watched]
+        if hit and bot is not None:
+            import functools
+            self.loop.call_soon_threadsafe(functools.partial(
+                bot._notify, f"{', '.join(hit)} - OFFERING news ({it['src']})", f"{it['et']} ET  {it['head']}" + chr(10) + str(it.get('url', '')),
+                "err", ping=True, tag="NEWS  ·  OFFERING", who="System"))
 
     def ib_portfolio(self):
         """3.14 IB tab: the positions of the IB account (blocking helper for the page; read only)."""
@@ -552,6 +570,42 @@ class Backend:
         kind "1m" = 1-minute rows (VWAP per day like the chart) before `oldest` (chart time); "D" = daily rows.
         3.11: {"rows": [...], "src": "cache" | "IB"} - finished days come from disk when it has them."""
         return asyncio.run_coroutine_threadsafe(self._more(sym, kind, int(oldest)), self.loop).result(timeout=90)
+
+    def fetch_day(self, sym, day):
+        """3.14 Notes tab, blocking helper: the 1-minute candles of one ticker-day from IB (04:00-20:00 ET; today = up
+        to now) - for a day that is neither in the vault nor in the bar cache. [(t, o, h, l, c, v)], chart time."""
+        return asyncio.run_coroutine_threadsafe(self._fetch_day(sym, day), self.loop).result(timeout=60)
+
+    async def _fetch_day(self, sym, day):
+        if self.ib is None or not self.ib.isConnected():
+            raise RuntimeError("not connected to IB Gateway")
+        st = self.state
+        contract = st.contract if st is not None and st.sym == sym and st.contract is not None else None
+        if contract is None:
+            details = await asyncio.wait_for(self.ib.reqContractDetailsAsync(app.Stock(sym.replace(".", " "), "SMART", "USD")), 20)
+            if not details:
+                raise RuntimeError(f"{sym} not found at IB")
+            contract = pick_details(details).contract
+            contract.exchange = "SMART"
+        y, m, d = (int(x) for x in day.split("-"))
+        end = datetime(y, m, d, 20, 0, tzinfo=app.ET_TZ)
+        end_s = "" if end >= self.now_et() else end.astimezone(timezone.utc).strftime("%Y%m%d-%H:%M:%S")
+        wait = self.more_next - time.monotonic()
+        if wait > 0:                                     # IB pacing: shared with the chart's older-history requests
+            await asyncio.sleep(wait)
+        self.more_next = time.monotonic() + app.HISTORY_MORE_MIN_GAP_SEC
+        bars = await asyncio.wait_for(self.ib.reqHistoricalDataAsync(
+            contract, endDateTime=end_s, durationStr="1 D", barSizeSetting="1 min", whatToShow="TRADES", useRTH=False,
+            formatDate=2), 50)
+        out = []
+        for b in bars or []:
+            dt = b.date if isinstance(b.date, datetime) else datetime.fromtimestamp(int(b.date), timezone.utc)
+            t = app.ctime(dt)
+            if datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%d") != day:
+                continue
+            o, h, l, c, v = app.bar_ohlcv(b)
+            out.append((t, float(o), float(h), float(l), float(c), float(v or 0)))
+        return out
 
     def _more_lock(self):
         if self._mlock is None:
@@ -773,6 +827,15 @@ class Backend:
         if self.bot is None:
             self.bot = app.Bot(self)
             self.loop.create_task(self.bot.run())
+        if getattr(self, "news", None) is None:     # 3.14: real-time news (Alpaca + SEC) for the News tab
+            try:
+                import newsfeed
+                self.news = newsfeed.NewsFeed(app.env_get, self._news_item,
+                                              lambda st: self.bridge.call("newsStatus", st), log,
+                                              lambda sym: self.bridge.call("newsReset", sym)).start()
+                self.news.set_symbol(self.pending_sym or (self.state.sym if self.state is not None else ""))
+            except Exception:
+                log.exception("news feed")
         await self._ensure_connected()
 
     async def _ensure_connected(self):

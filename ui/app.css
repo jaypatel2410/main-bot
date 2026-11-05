@@ -1118,3 +1118,41 @@ cursor:pointer;font:13px var(--font-data);font-variant-numeric:tabular-nums}
 .ibrow small{color:var(--dim);font-size:10.5px;margin-left:6px}
 .ibdet{display:flex;flex-direction:column;gap:12px;padding:14px 18px;min-height:0}
 #ib-mv,#ib-up,#ib-day{color:var(--text);font-family:var(--font-data);font-weight:500}#ib-up.grn,#ib-day.grn{color:var(--pos)}#ib-up.red,#ib-day.red{color:var(--neg)}
+
+
+/* 3.14: the bottom row - the News pane of the chart's stock (left) | the tabs (positions, orders, locates, alerts) */
+#bottom{display:grid;grid-template-columns:minmax(0,var(--news-w,38%)) 7px minmax(0,1fr);min-height:0;min-width:0}
+#nsplit{cursor:col-resize}
+#nsplit:after{left:3px;top:0;bottom:0;width:1px}
+#leftcol.oclosed #nsplit{visibility:hidden;pointer-events:none}
+#newsp{display:flex;flex-direction:column;min-height:0;min-width:0;background:var(--panel);overflow:hidden}
+#newsp .obody.o-news{grid-template-columns:minmax(0,1fr)}
+#nw-sym{color:var(--strong);font-family:var(--font-data);margin-left:4px}
+#nw-st{color:var(--dim);font-size:11px;margin-left:6px;overflow:hidden;text-overflow:ellipsis}
+.nwgrid{display:grid;grid-template-columns:62px minmax(0,1fr) 70px;align-items:center;gap:8px}
+.nwrow{padding:5px 8px;border-radius:5px;font-size:12.5px;border:1px solid transparent}
+.nwrow:hover{background:var(--hover)}
+.nwrow[data-nu]{cursor:pointer}
+.nwrow .tm{color:var(--dim);font:12px var(--font-data);font-variant-numeric:tabular-nums}
+.nwrow .tm i{display:block;font-style:normal;font-size:10.5px}
+.nwrow .hd{color:var(--text);white-space:normal;line-height:1.35}
+.nwrow .sr{color:var(--dim);font-size:11px;text-align:right}
+.nwrow .tg{font:700 10px var(--font-data);letter-spacing:.04em;padding:1px 5px;border-radius:3px;margin-right:6px;border:1px solid var(--edge);color:var(--muted)}
+.nwrow .tg.OFFERING{background:rgba(242,54,69,.18);border-color:var(--neg);color:#ff8a93}
+.nwrow .tg.RS,.nwrow .tg.DELIST{color:var(--warn);border-color:rgba(240,178,50,.5)}
+.nwrow.off{background:rgba(242,54,69,.1);border-color:rgba(242,54,69,.45)}
+.nwrow.new{animation:snew 3s ease-out}
+
+/* 3.14: Notes tab - resizable chart, add / edit notes */
+#nt-cbox{height:var(--nt-ch,330px)}
+#nt-chart{cursor:crosshair}
+.ntgrip{flex:none;height:8px;margin:-8px 0 -4px;cursor:row-resize;position:relative}
+.ntgrip:after{content:"";position:absolute;left:45%;right:45%;top:3px;height:2px;border-radius:2px;background:var(--line2)}
+.ntgrip:hover:after,.ntgrip.drag:after{background:var(--blue)}
+.ntadd{display:flex;flex-direction:column;gap:6px}
+.ntadd textarea,.ntnote textarea{width:100%;min-height:58px;resize:vertical;padding:7px 9px;border-radius:var(--r-m);border:1px solid var(--line);background:var(--well);
+color:var(--text);font:13px/1.45 var(--font-ui);outline:none;box-sizing:border-box}
+.ntadd textarea:focus,.ntnote textarea:focus{border-color:var(--blue)}
+.ntaddb{display:flex;align-items:center;gap:8px}
+.ntnote .h .sbtn + .sbtn{margin-left:0}
+.ntnote .eb{display:flex;gap:6px;justify-content:flex-end}

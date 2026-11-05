@@ -161,6 +161,7 @@ DISCORD_CHART_MINUTES = 150        # minutes of candles on the chart image (trad
 DISCORD_IMAGE_MIN_GAP_SEC = 20     # at most one picture set per symbol this often (setups, locates, orders, fills, stops,
                                    # covers, exits and alerts always get one)
 DISCORD_HEARTBEAT_MIN = 30         # status message every N minutes from 4:00 to 20:00 ET (0 = off)
+NEWS_OFFERING_DISCORD = True        # 3.14: offering news (Alpaca / SEC) on a stock you follow (watchlist, scanner, chart) -> Discord ping
 IB_REPORT_TIMES = ("10:00", "12:00")  # 3.14: the IB portfolio (market value, today's P&L, unrealized - in CAD) to Discord
                                    # at these ET times on weekdays. () = off
 
