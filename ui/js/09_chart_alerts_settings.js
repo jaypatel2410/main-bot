@@ -42,7 +42,7 @@
   function openSettings(k){ showScreen('set'); if (k) setSection(k); }
   function showScreen(s){
     if (s === 'keys') { s = 'set'; setTimeout(() => setSection('hotkeys'), 0); }
-    if (!['chart', 'scan', 'journal', 'bot', 'set', 'fav', 'bt'].includes(s)) s = 'chart';
+    if (!['chart', 'scan', 'journal', 'bot', 'set', 'fav', 'bt', 'notes', 'ib'].includes(s)) s = 'chart';
     const prev = screen; screen = s;
     document.querySelectorAll('.screen').forEach(el => el.classList.toggle('on', el.id === 'scr-' + s));
     document.querySelectorAll('#rail .rb').forEach(b => b.classList.toggle('on', b.dataset.scr === s));
@@ -52,6 +52,8 @@
     if (s === 'set') setSection(setSec);
     if (s === 'fav') renderFav();
     if (s === 'bt') btLoad();
+    if (s === 'notes') ntLoad();
+    if (s === 'ib') ibLoad();
     if (prev !== s) api('ui_screen', s);
     menu(false);
   }

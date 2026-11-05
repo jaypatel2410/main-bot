@@ -577,7 +577,12 @@ class JsApi:
 
     def note_save(self, tk, day, t=None, px=None, text="", nid=None, src="live"):
         try:
-            return {"ok": True, "note": self._cn().save(tk, day, t, px, text, nid, src)}
+            note = self._cn().save(tk, day, t, px, text, nid, src)
+            if not nid and str(src) == "live":           # 3.14: the vault feed fetches this ticker-day, so its chart is in the Notes tab
+                import threading
+                import vault_feed as VF
+                threading.Thread(target=VF.record, args=(DATA_DIR, note["day"], [note["tk"]], "chart note"), daemon=True).start()
+            return {"ok": True, "note": note}
         except ValueError as exc:
             return {"ok": False, "error": str(exc)}
         except Exception as exc:
@@ -590,6 +595,70 @@ class JsApi:
         except Exception as exc:
             log.exception("note_delete")
             return {"ok": False, "error": str(exc)}
+
+    # ---- 3.14: the Notes tab - every ticker-day with chart notes (live + backtest) or a backtest verdict ----
+    def notes_list(self):
+        try:
+            allv = self._cn().everything()
+            B = self._btm()
+            names = {s["folder"]: s["name"] for s in B.BUILTIN}
+            keys_of = {s["folder"]: s["k"] for s in B.BUILTIN}
+            verd = B.verdicts_all()
+            keys = set(allv) | set(verd)
+            trades = B.trades_for(keys)
+            out = []
+            for k in keys:
+                tk, _, day = k.partition("|")
+                notes = allv.get(k, [])
+                tr = [{"strat": names.get(t["folder"], t["folder"]), "k": keys_of.get(t["folder"], "x_" + t["folder"]), "side": t.get("side", ""), "setup": t.get("setup", ""),
+                       "entry": t["entry"], "entry_hms": t.get("entry_hms", ""), "exit": t["exit"], "exit_hms": t.get("exit_hms", ""),
+                       "stop": t["stop"], "result": t.get("result", ""), "pnl": t["pnl"]} for t in trades.get(k, [])]
+                out.append({"tk": tk, "day": day, "notes": notes,
+                            "verdicts": [{"strat": names.get(f, f), "v": v} for f, v in verd.get(k, [])],
+                            "trades": tr, "src": sorted({n.get("src", "live") for n in notes}),
+                            "last": max([n.get("updated") or n.get("created") or "" for n in notes] or [day])})
+            out.sort(key=lambda x: (x["day"], x["last"]), reverse=True)
+            return {"ok": True, "items": out}
+        except Exception as exc:
+            log.exception("notes_list")
+            return {"ok": False, "error": str(exc), "items": []}
+
+    def notes_bars(self, tk, day):
+        """1-minute candles of a ticker-day for the Notes tab: the vault, else the candles this PC saved from IB."""
+        tk = re.sub(r"[^A-Z0-9. ]", "", str(tk or "").upper()).strip()
+        day = str(day or "")[:10]
+        try:
+            B = self._btm()
+            r = B.bars(B.settings().get("vault", ""), tk, day)
+            if r.get("ok"):
+                return r
+        except Exception:
+            pass
+        cache = getattr(self._backend, "cache", None)
+        try:
+            y, m, d = (int(x) for x in day.split("-"))
+            got = cache.day(tk, (ddate(y, m, d) - ddate(1970, 1, 1)).days) if cache is not None else None
+        except Exception:
+            got = None
+        if got and got[0]:
+            out, cv, cpv = [], 0.0, 0.0
+            for t, o, h, l, c, v in got[0]:
+                if not (4 * 3600 <= t % 86400 < 20 * 3600):
+                    continue
+                cv += v or 0
+                cpv += (v or 0) * (h + l + c) / 3.0
+                out.append({"time": int(t), "open": o, "high": h, "low": l, "close": c, "volume": v, "vwap": cpv / cv if cv else c})
+            return {"ok": bool(out), "bars": out, "daily": [], "pc": got[1]}
+        today = str(self._backend.now_et().date()) == day
+        return {"ok": False, "error": "today's candles are on the live chart (the vault gets them tomorrow)" if today
+                else "no candles saved for this day (not in the vault)"}
+
+    # ---- 3.14: the IB tab - the IB account's positions (read only) ----
+    def ib_portfolio(self):
+        try:
+            return {"ok": True, **self._backend.ib_portfolio()}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc) or exc.__class__.__name__, "rows": []}
 
     # ---- 3.12.1: favorites (permanent list of tickers, e.g. multi-day runners) ----
     def fav_list(self):

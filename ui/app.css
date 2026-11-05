@@ -1075,3 +1075,46 @@ font:600 13px var(--font-data);font-variant-numeric:tabular-nums;white-space:now
 #q-ba i{font-style:normal;font-weight:400;color:var(--dim)}
 #q-bid{color:#34d399}#q-ask{color:#fb7185}
 #q-ba.halt{border-color:rgba(251,191,36,.55);background:rgba(251,191,36,.08)}
+/* 3.14: Notes tab (every ticker-day with chart notes or a verdict) + IB tab (the IB account's positions, read only) */
+.ntin{width:190px;height:30px;padding:0 10px;border-radius:var(--r-m);border:1px solid var(--line);background:var(--well);color:var(--strong);outline:none;font:13px var(--font-ui)}
+.ntin:focus{border-color:var(--blue)}
+.ntv{flex:none;display:flex;gap:6px;flex-wrap:wrap;padding:10px 18px;border-bottom:1px solid var(--line)}
+.ntv button{height:24px;padding:0 10px;border-radius:12px;border:1px solid var(--edge);background:var(--card);color:var(--muted);font:12px var(--font-ui);cursor:pointer}
+.ntv button.on{border-color:var(--blue);color:var(--strong);background:var(--sel)}
+.ntv button b{font-weight:600;margin-left:5px;color:var(--text)}
+.ntb{flex:1;display:grid;grid-template-columns:340px minmax(0,1fr);min-height:0}
+.ntlist{overflow-y:auto;border-right:1px solid var(--line);min-height:0}
+.ntg{position:sticky;top:0;z-index:1;padding:7px 14px;font-size:11.5px;color:var(--dim);background:var(--bg2);border-bottom:1px solid var(--soft)}
+.ntrow{padding:10px 14px;border-bottom:1px solid var(--soft);cursor:pointer;display:flex;flex-direction:column;gap:4px}
+.ntrow:hover{background:var(--hover)}.ntrow.sel{background:var(--sel);box-shadow:inset 2px 0 0 var(--blue)}
+.ntrow .t{display:flex;align-items:center;gap:8px}.ntrow .t b{color:var(--strong);font:600 13.5px var(--font-data);letter-spacing:.02em}
+.ntrow .x{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ntrow .f{color:var(--dim);font-size:11.5px;display:flex;gap:8px}
+.ntvd{font-size:11px;padding:1px 8px;border-radius:9px;border:1px solid var(--edge);color:var(--muted);white-space:nowrap}
+.ntvd.good{color:var(--pos);border-color:rgba(34,171,148,.5)}.ntvd.bad{color:var(--neg);border-color:rgba(247,82,95,.5)}.ntvd.skip{color:var(--warn);border-color:rgba(240,178,50,.5)}
+.ntsrc{font-size:10.5px;color:var(--dim);border:1px solid var(--soft);border-radius:4px;padding:0 5px}
+.ntdet{display:flex;flex-direction:column;gap:12px;padding:14px 18px;overflow-y:auto;min-height:0}
+.ntdh{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.ntdh b{color:var(--strong);font:600 18px var(--font-data)}
+.ntfacts{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+.ntfacts div{border:1px solid var(--line);border-radius:var(--r-m);background:var(--card);padding:7px 10px;font-size:11.5px;color:var(--dim);display:flex;flex-direction:column;gap:2px}
+.ntfacts b{color:var(--text);font:500 13px var(--font-data)}.ntfacts b.grn{color:var(--pos)}.ntfacts b.red{color:var(--neg)}
+.ntchart{position:relative;height:330px;flex:none;border:1px solid var(--line);border-radius:var(--r-m);overflow:hidden;background:#000}
+.ntchart>div:first-child{position:absolute;inset:0}
+.ntcmsg{position:absolute;left:0;right:0;top:45%;text-align:center;pointer-events:none}
+.ntnotes{display:flex;flex-direction:column;gap:8px}
+.ntnote{border:1px solid var(--line);border-radius:var(--r-m);background:var(--card);padding:8px 11px;display:flex;flex-direction:column;gap:4px}
+.ntnote .h{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--dim)}
+.ntnote .n{min-width:20px;height:20px;border-radius:10px;background:#fde68a;color:#3a2a00;font:700 11px var(--font-data);display:inline-flex;align-items:center;justify-content:center}
+.ntnote .tx{white-space:pre-wrap;color:var(--text);font-size:13px;line-height:1.45}
+.ntnote .h .sbtn{height:22px;margin-left:auto}
+.ibb{flex:1;display:grid;grid-template-columns:minmax(420px,1fr) minmax(0,1.2fr);min-height:0}
+.iblist{overflow-y:auto;border-right:1px solid var(--line);min-height:0}
+.ibrow{display:grid;grid-template-columns:minmax(70px,1fr) 70px 84px 84px 110px 140px 150px;gap:8px;align-items:center;padding:0 16px;height:40px;border-bottom:1px solid var(--soft);
+cursor:pointer;font:13px var(--font-data);font-variant-numeric:tabular-nums}
+.ibrow span:nth-child(n+2){text-align:right}.ibrow b{color:var(--strong);font-weight:600}
+.ibrow.h{height:34px;color:var(--dim);font:11.5px var(--font-ui);cursor:default;position:sticky;top:0;background:var(--bg2)}
+.ibrow:not(.h):hover{background:var(--hover)}.ibrow.sel{background:var(--sel);box-shadow:inset 2px 0 0 var(--blue)}
+.ibrow .grn{color:var(--pos)}.ibrow .red{color:var(--neg)}
+.ibrow small{color:var(--dim);font-size:10.5px;margin-left:6px}
+.ibdet{display:flex;flex-direction:column;gap:12px;padding:14px 18px;min-height:0}
+#ib-mv,#ib-up,#ib-day{color:var(--text);font-family:var(--font-data);font-weight:500}#ib-up.grn,#ib-day.grn{color:var(--pos)}#ib-up.red,#ib-day.red{color:var(--neg)}

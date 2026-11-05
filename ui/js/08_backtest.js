@@ -5,7 +5,7 @@
   const btc = v => v == null || v === 0 ? '' : v > 0 ? 'grn' : 'red';
   const btEpoch = (day, hms) => { const [y, m, d] = day.split('-').map(Number); const [h, mi, s] = ((hms || '00:00:00') + ':00:00').split(':').map(Number);
     return Date.UTC(y, m - 1, d, h, mi, s) / 1000; };
-  let btV = 'cards';
+  let btV = 'cards', btGo = null;                  // btGo: {k, tk, day} - a trade to open (from the Notes tab)
   function btView(v){ btV = v; ['cards', 'run', 'res', 'tr'].forEach(x => $('btv-' + x).classList.toggle('on', x === v)); if (v === 'tr' && btChart) setTimeout(btResize, 30); }
   // 3.14: the Backtest page = one card per strategy; a card opens that strategy's dashboard. A strategy has ONE run: it is
   // created once ("Run once"), and every time the strategy is opened only the new vault days are run and added to it.
@@ -59,7 +59,8 @@
       $('bt-cp').value = c.comp_pct ?? 20; $('bt-cm').value = c.comp_max ?? 50000; $('bt-cml').value = c.comp_max_long ?? 10000; $('bt-procs').value = c.procs ?? 0;
       $('bt-listw').classList.toggle('hidden', $('bt-days').value !== 'list');
       btFoldSum(); if (!r.running && !btPoll) $('bt-progc').classList.add('hidden');
-      btStrats(); btCards(); btView('cards'); if (r.running) { btWatch(); }
+      btStrats(); btCards(); if (r.running) { btWatch(); }
+      if (btGo && btS.some(x => x.k === btGo.k)) btOpenStrategy(btGo.k); else { btGo = null; btView('cards'); }   // 3.14: Notes tab -> Open in backtest
     });
   }
   function btStrats(){
@@ -104,6 +105,7 @@
       if (!r || !r.ok) { toast({kind: 'err', text: 'Backtest: ' + ((r && r.error) || 'no result')}); return; }
       if (!r.summary) { toast({kind: 'warn', text: r.progress && r.progress.state === 'running' ? 'Still running' : 'This run has no result (' + ((r.progress && r.progress.error) || 'not finished') + ')'}); return; }
       btRes = r; btRenderRes(); btView('res');
+      if (btGo && btGo.k === btK) { const g = btGo; btGo = null; const i = (r.trades || []).findIndex(x => x.tk === g.tk && x.day === g.day); if (i >= 0) btOpenTrade(i); }
     });
   }
   function btRenderRes(){

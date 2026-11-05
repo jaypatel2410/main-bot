@@ -1265,6 +1265,46 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile):  #
             except Exception:
                 log.exception("bot tick")
 
+    # ---------------- 3.14: the IB portfolio to Discord (IB_REPORT_TIMES, ET, weekdays) ----------------
+    def _ib_report_tick(self, now, secs, weekday):
+        """Once per report time and day, within 30 minutes after it (a later start does not send an old report)."""
+        if not weekday:
+            return
+        for hm in IB_REPORT_TIMES or ():
+            try:
+                h, m = (int(x) for x in str(hm).split(":"))
+            except ValueError:
+                continue
+            at = h * 3600 + m * 60
+            key = f"{now.date()} {hm}"
+            if at <= secs < at + 1800 and key not in getattr(self, "_ibr_sent", set()):
+                self._ibr_sent = getattr(self, "_ibr_sent", set()) | {key}
+                self.loop.create_task(self._ib_report(hm))
+
+    async def _ib_report(self, hm):
+        try:
+            r = await self.be._portfolio()
+        except Exception as exc:
+            self._log(f"IB portfolio report {hm}: not sent - {exc}", "warn")
+            return
+        cm = lambda v: "-" if v is None else f"{'-' if v < 0 else ''}C${abs(v):,.0f}"          # noqa: E731
+        sg = lambda v: "-" if v is None else ("+" if v > 0 else "") + cm(v)                   # noqa: E731
+        pc = lambda v: "" if v is None else f" ({v:+.1f}%)"                                     # noqa: E731
+        rows = r.get("rows") or []
+        lines = [f"{x['sym']}  {x['qty']:,.0f} sh  ·  {cm(x['value']) if x['cad'] else x['cur'] + ' ' + format(x['value'] or 0, ',.0f')}"
+                 f"  ·  today {sg(x['day'])}{pc(x['day_pct'])}  ·  unrealized {sg(x['upnl'])}{pc(x['pct'])}" for x in rows]
+        f = [("Market value", cm(r.get("value")), True), ("Today", sg(r.get("day")), True),
+             ("Unrealized", sg(r.get("upnl")), True),
+             ("USD/CAD", f"{r['usdcad']:.4f}" if r.get("usdcad") else "no rate", True)]
+        note = []
+        if r.get("missing"):
+            note.append(f"{r['missing']} position(s) without a price from IB")
+        if r.get("no_rate"):
+            note.append(f"{r['no_rate']} position(s) not converted to CAD")
+        self._notify(f"IB portfolio {cm(r.get('value'))}  ·  today {sg(r.get('day'))}",
+                     chr(10).join(lines + ([""] + note if note else [])) or "No open positions.",
+                     "ok" if (r.get("day") or 0) >= 0 else "warn", fields=f, tag=f"IB PORTFOLIO  ·  {hm} ET", who="System")
+
     # ---------------- 3.12.1: daily vault feed (core/vault_feed.py) ----------------
     def _vault_feed_tick(self, now, mono, secs, weekday):
         """Once a minute (04:00-20:00 ET, weekdays): note today's monitored symbols in the feed's own queue.
@@ -1337,6 +1377,7 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile):  #
         cur_min = wall // 60 * 60
         weekday = now.weekday() < 5
         self._vault_feed_tick(now, mono, secs, weekday)          # 3.12.1: the daily vault feed (never blocks)
+        self._ib_report_tick(now, secs, weekday)                 # 3.14: the IB portfolio to Discord (10:00, 12:00)
         if self.day != now.date():
             self.day = now.date()
             self.trades_today = 0

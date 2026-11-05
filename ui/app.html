@@ -45,6 +45,8 @@ __APP_CSS__
   <button class="rb on" data-scr="chart" title="Chart (Esc)"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 5-6"/></svg></button>
   <button class="rb" data-scr="scan" title="Scanner (F2)"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h6"/><circle cx="18" cy="16" r="3"/><path d="M20.2 18.2L22 20"/></svg></button>
   <button class="rb" data-scr="journal" title="Journal (F3)"><svg viewBox="0 0 24 24"><path d="M5 4h11l3 3v13H5z"/><path d="M9 10h6M9 14h6"/></svg></button>
+  <button class="rb" data-scr="notes" title="Notes"><svg viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></svg></button>
+  <button class="rb" data-scr="ib" title="IB portfolio"><svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V10M10 21V5M15 21v-8M20 21V8"/></svg></button>
   <button class="rb" data-scr="bt" title="Dashboard (F8)"><svg viewBox="0 0 24 24"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3"/><path d="M7.5 15h9"/></svg></button>
   <button class="rb" data-scr="bot" title="Bot center (F4)"><svg viewBox="0 0 24 24"><rect x="6" y="8" width="12" height="10" rx="2"/><path d="M12 4v4M9.5 13h.01M14.5 13h.01"/></svg></button>
   <div class="rsp"></div>
@@ -242,6 +244,34 @@ __APP_CSS__
         </div>
       </div>
     </div>
+  </div>
+</section>
+<section class="screen" id="scr-notes" aria-label="Notes">
+  <div class="sch"><span class="st">Notes</span><span class="sm" id="nt-meta">-</span><div class="spacer"></div>
+    <input class="ntin" id="nt-q" placeholder="Search ticker or text" autocomplete="off" spellcheck="false">
+    <div class="seg2" id="nt-src"><button data-v="all" class="on">All</button><button data-v="live">Live</button><button data-v="backtest">Backtest</button></div>
+    <span class="sm">Group by</span><div class="seg2" id="nt-grp"><button data-v="day" class="on">Day</button><button data-v="tk">Ticker</button></div></div>
+  <div class="ntv" id="nt-verd"></div>
+  <div class="ntb">
+    <div class="ntlist" id="nt-list"></div>
+    <div class="ntdet" id="nt-det">
+      <div class="ntdh"><b id="nt-tk"></b><span class="sm" id="nt-day"></span><span id="nt-vd"></span><div class="spacer"></div>
+        <button class="sbtn" id="nt-live">Open live chart</button><button class="sbtn" id="nt-bt" hidden>Open in backtest</button></div>
+      <div class="ntfacts" id="nt-facts"></div>
+      <div class="ntchart"><div id="nt-chart"></div><div class="sm ntcmsg" id="nt-cmsg"></div></div>
+      <div class="mh" style="padding:2px 0 0">NOTES ON THIS CHART <span class="sm" style="letter-spacing:0;text-transform:none">- right click any chart to add one</span></div>
+      <div id="nt-notes" class="ntnotes"></div>
+    </div>
+  </div>
+</section>
+<section class="screen" id="scr-ib" aria-label="IB portfolio">
+  <div class="sch"><span class="st">IB portfolio</span><span class="sm" id="ib-meta">-</span><div class="spacer"></div>
+    <span class="sm">Market value <b id="ib-mv">-</b></span><span class="sm">Today <b id="ib-day">-</b></span><span class="sm">Unrealized <b id="ib-up">-</b></span>
+    <button class="sbtn" id="ib-ref">Refresh</button></div>
+  <div class="ibb">
+    <div class="iblist"><div class="ibrow h"><span>Symbol</span><span>Shares</span><span>Avg cost</span><span>Last</span><span>Market value</span><span>Today</span><span>Unrealized</span></div><div id="ib-list"></div></div>
+    <div class="ibdet"><div class="ntdh"><b id="ib-sym">-</b><span class="sm">daily - 2 years - prices in the stock&#39;s own currency</span><div class="spacer"></div><button class="sbtn" id="ib-main">Open on main chart</button></div>
+      <div class="ntchart" style="flex:1"><div id="ib-chart"></div><div class="sm ntcmsg" id="ib-cmsg">Click a position for its daily chart.</div></div></div>
   </div>
 </section>
 <section class="screen" id="scr-fav" aria-label="Favorites">

@@ -362,7 +362,7 @@ _part("window/jsapi.py")
 # -----------------------------------------------------------------------------
 # Page (ui/app.html + ui/app.css + ui/app.js)
 # -----------------------------------------------------------------------------
-_JS_FILES = ('01_boot.js', '02_chart.js', '03_trading_orders.js', '04_app_shell.js', '05_alerts_screens.js', '06_colors.js', '07_favorites.js', '08_backtest.js', '09_chart_alerts_settings.js', '09b_chart_notes.js', '10_scanner.js', '11_journal.js', '12_bot_center.js', '13_hotkeys.js')   # ui/js/*, joined in this order into one script
+_JS_FILES = ('01_boot.js', '02_chart.js', '03_trading_orders.js', '04_app_shell.js', '05_alerts_screens.js', '06_colors.js', '07_favorites.js', '08_backtest.js', '09_chart_alerts_settings.js', '09b_chart_notes.js', '10_scanner.js', '11_journal.js', '12_bot_center.js', '12b_notes_ib.js', '13_hotkeys.js')   # ui/js/*, joined in this order into one script
 HTML = _ui("app.html").replace("__APP_CSS__", _ui("app.css").rstrip("\n")).replace(
     "__APP_JS__", "".join(_ui("js/" + _f) for _f in _JS_FILES).rstrip("\n"))
 

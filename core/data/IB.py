@@ -317,6 +317,19 @@ def ib_bar(t, o, h, l, c, v):
 # -----------------------------------------------------------------------------
 # IB backend (own thread + asyncio loop)
 # -----------------------------------------------------------------------------
+def _boc_usdcad():
+    """USD/CAD from the Bank of Canada (its daily published rate, no key needed) - used when IB sends no forex quote."""
+    import json
+    import urllib.request
+    try:
+        with urllib.request.urlopen("https://www.bankofcanada.ca/valet/observations/FXUSDCAD/json?recent=1", timeout=8) as r:
+            obs = json.loads(r.read().decode("utf-8")).get("observations") or []
+        return float(obs[-1]["FXUSDCAD"]["v"]) if obs else None
+    except Exception as exc:
+        log.warning("USD/CAD from the Bank of Canada: %r", exc)
+        return None
+
+
 class Backend:
     def __init__(self, bridge, settings):
         self.bridge, self.settings = bridge, settings
@@ -372,6 +385,130 @@ class Backend:
 
     def request_reconnect(self):
         self.loop.call_soon_threadsafe(self._force_reconnect)
+
+    def ib_portfolio(self):
+        """3.14 IB tab: the positions of the IB account (blocking helper for the page; read only)."""
+        return asyncio.run_coroutine_threadsafe(self._portfolio(), self.loop).result(timeout=30)
+
+    async def _portfolio(self):
+        """One snapshot, no streaming: the positions (shares + average cost), one snapshot price per position and the
+        USD/CAD rate; market value, today's P&L and unrealized P&L are worked out here, in CAD (IB's account-update stream
+        is not used - it timed out). A USD position is converted at today's rate (its cost too: the P&L shows the price
+        move, not the currency move since you bought)."""
+        if getattr(self, "_pf_lock", None) is None:
+            self._pf_lock = asyncio.Lock()
+        async with self._pf_lock:                    # one snapshot at a time (IB answers one position request at a time);
+            last = getattr(self, "_pf_last", None)   # a second click while one runs gets that same answer
+            if last is not None and time.monotonic() - last[0] < 15:
+                return last[1]
+            out = await self._portfolio_snap()
+            self._pf_last = (time.monotonic(), out)
+            return out
+
+    async def _portfolio_snap(self):
+        import copy
+        ib = self.ib
+        if ib is None or not ib.isConnected():
+            raise RuntimeError("not connected to IB Gateway")
+        accts = list(ib.managedAccounts() or [])
+        pos = list(ib.positions())                   # kept up to date by IB Gateway since the connect
+        if not pos:
+            try:
+                pos = list(await asyncio.wait_for(ib.reqPositionsAsync(), 10) or [])
+            except Exception as exc:
+                log.warning("IB positions: %r", exc)
+        pos = [p for p in pos if p.position]
+        cons = []
+        for p in pos:
+            c = copy.copy(p.contract)
+            c.exchange = "SMART"                      # one quote across exchanges (the position reports its listing)
+            cons.append(c)
+        tks = []
+        for c in cons:                               # snapshot=True: one answer per contract, nothing keeps streaming
+            try:
+                tks.append(ib.reqMktData(c, "", True, False))
+            except Exception:
+                tks.append(None)
+        fx_c, fx_t = self._fx_contract(), None
+        need_fx = any(str(getattr(c, "currency", "USD") or "USD") == "USD" for c in cons)
+        if fx_c is not None and need_fx:
+            try:
+                fx_t = ib.reqMktData(fx_c, "", True, False)
+            except Exception:
+                fx_t = None
+
+        def px(t):
+            if t is None:
+                return None
+            for v in (getattr(t, "last", None), getattr(t, "close", None)):
+                v = app._num(v)
+                if v:
+                    return v
+            b, a = app._num(getattr(t, "bid", None)), app._num(getattr(t, "ask", None))
+            return (b + a) / 2 if b and a else None
+
+        def mid(t):                                  # forex: the bid/ask midpoint (no trades), else the close
+            if t is None:
+                return None
+            b, a = app._num(getattr(t, "bid", None)), app._num(getattr(t, "ask", None))
+            return (b + a) / 2 if b and a else app._num(getattr(t, "close", None))
+        end = time.monotonic() + 8
+        while time.monotonic() < end and (any(t is not None and px(t) is None for t in tks) or (fx_t is not None and mid(fx_t) is None)):
+            await asyncio.sleep(0.25)
+        usdcad = mid(fx_t)
+        if usdcad is None and fx_t is not None and fx_c is not None:     # no quote: the last daily midpoint
+            try:
+                bars = await asyncio.wait_for(ib.reqHistoricalDataAsync(fx_c, endDateTime="", durationStr="5 D", barSizeSetting="1 day",
+                                                                        whatToShow="MIDPOINT", useRTH=True, formatDate=1), 15)
+                usdcad = app._num(bars[-1].close) if bars else None
+            except Exception as exc:
+                log.warning("USD/CAD rate: %r", exc)
+        src = "IB" if usdcad else ""
+        if usdcad is None and need_fx:               # IB has no forex data here: the Bank of Canada's daily rate
+            usdcad = await self.loop.run_in_executor(None, _boc_usdcad)
+            src = "Bank of Canada" if usdcad else ""
+        if usdcad:
+            self._usdcad = usdcad
+        usdcad = usdcad or getattr(self, "_usdcad", None)              # the last rate this run had, if IB gave none now
+        rows = []
+        for p, c, t in zip(pos, cons, tks):
+            qty = float(p.position or 0)                 # (not _num: a short is negative)
+            mult = app._num(getattr(c, "multiplier", None)) or 1.0
+            cur = str(getattr(c, "currency", "") or "USD")
+            k = 1.0 if cur == "CAD" else usdcad if cur == "USD" else None    # -> CAD (None: no rate, shown in its own currency)
+            avg_raw = app._num(p.avgCost)                # IB: per share for stocks, per contract (x multiplier) for options
+            avg = avg_raw / mult if avg_raw is not None else None
+            last = px(t)
+            prev = app._num(getattr(t, "close", None)) if t is not None else None    # the snapshot's close = yesterday's close
+            value = qty * last * mult if last is not None else None
+            upnl = value - qty * avg_raw if value is not None and avg_raw is not None else None
+            day = qty * (last - prev) * mult if last is not None and prev else None
+            cv = lambda v: None if v is None or k is None else v * k     # noqa: E731
+            rows.append({"sym": str(c.symbol or ""), "type": str(c.secType or ""), "cur": cur, "cad": k is not None,
+                         "qty": qty, "avg_native": avg, "last_native": last,
+                         "avg": cv(avg) if k else avg, "last": cv(last) if k else last,
+                         "value": cv(value) if k else value, "upnl": cv(upnl) if k else upnl, "day": cv(day) if k else day,
+                         "pct": (last / avg - 1) * 100 * (1 if qty > 0 else -1) if last and avg else None,
+                         "day_pct": (last / prev - 1) * 100 * (1 if qty > 0 else -1) if last and prev else None})
+        rows.sort(key=lambda r: -(abs(r["value"] or 0)))
+        cad = [r for r in rows if r["cad"]]
+        tot = lambda key: sum(r[key] for r in cad if r[key] is not None) if any(r[key] is not None for r in cad) else None   # noqa: E731
+        log.info("IB portfolio snapshot: %d position(s), %d with a price, USD/CAD %s%s", len(rows),
+                 sum(1 for r in rows if r["last"] is not None), f"{usdcad:.4f}" if usdcad else "none",
+                 f" ({src})" if src else "")
+        return {"rows": rows, "accounts": accts, "at": self.now_et().strftime("%H:%M:%S"), "usdcad": usdcad, "fx_src": src,
+                "value": tot("value"), "upnl": tot("upnl"), "day": tot("day"),
+                "missing": sum(1 for r in rows if r["last"] is None), "no_rate": sum(1 for r in rows if not r["cad"])}
+
+    def _fx_contract(self):
+        try:
+            from ib_async import Forex
+        except ImportError:
+            try:
+                from ib_insync import Forex
+            except ImportError:
+                return None
+        return Forex("USDCAD")
 
     def fetch_daily(self, sym):
         """Blocking helper for the page: daily candles (regular hours) for sym."""

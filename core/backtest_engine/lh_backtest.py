@@ -483,6 +483,65 @@ def _notes_put(folder, key, n, c=None):
     _jsave(_notes_path(folder), allv)
 
 
+def verdicts_all():
+    """3.14 Notes tab: {"TK|day": [(strategy folder, verdict)]} of every strategy (one query with Turso)."""
+    out = {}
+    c = _cloud()
+    if c is not None:
+        try:
+            for folder, k, v in c.execute("SELECT folder, k, v FROM bt_notes"):
+                vd = (json.loads(v or "{}") or {}).get("verdict") or ""
+                if vd:
+                    out.setdefault(k, []).append((folder, vd))
+            return out
+        except Exception:
+            pass
+    for s in BUILTIN:
+        for k, n in _jload(_notes_path(s["folder"]), {}).items():
+            if (n or {}).get("verdict"):
+                out.setdefault(k, []).append((s["folder"], n["verdict"]))
+    return out
+
+
+def trades_for(keys):
+    """3.14 Notes tab: {"TK|day": [trade rows + "folder"]} - the backtest trades of these ticker-days (every strategy's run)."""
+    import io
+    keys = set(keys)
+    out = {}
+    texts = []
+    c = _cloud()
+    if c is not None:
+        try:
+            texts += [(f, t) for f, t in c.execute("SELECT folder, csv FROM bt_trades")]
+        except Exception:
+            pass
+    try:
+        for f in os.listdir(BT_DIR):
+            root = os.path.join(BT_DIR, f, "runs")
+            for rid in (os.listdir(root) if os.path.isdir(root) else []):
+                p = os.path.join(root, rid, "trades.csv")
+                if os.path.isfile(p) and not os.path.isfile(os.path.join(root, rid, ".uploaded")):
+                    with open(p, encoding="utf-8", newline="") as fh:
+                        texts.append((f, fh.read()))
+    except OSError:
+        pass
+    seen = set()
+    for folder, text in texts:
+        for r in csv.DictReader(io.StringIO(text or "")):
+            k = f"{r.get('tk')}|{r.get('day')}"
+            sig = (folder, k, r.get("entry_hms"), r.get("setup"))
+            if k in keys and sig not in seen:
+                seen.add(sig)
+                r["folder"] = folder
+                for kk in ("entry", "stop", "exit", "pnl"):
+                    try:
+                        r[kk] = float(r[kk])
+                    except (TypeError, ValueError):
+                        r[kk] = None
+                out.setdefault(k, []).append(r)
+    return out
+
+
 def notes_move(folder, store):
     """3.14: this strategy's chart notes move to the shared chart notes (core/data/chart_notes.py: the live chart and
     every backtest chart of the ticker-day show them). The verdicts stay here, per strategy. A note is removed from here
