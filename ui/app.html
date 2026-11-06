@@ -25,6 +25,7 @@ __APP_CSS__
     <span hidden><span class="chip" id="c-up"><b>Gap</b><span>-</span></span><span class="chip" id="c-off"><b>Off HOD</b><span>-</span></span><span class="chip" id="c-hod"><b>HOD</b><span>-</span></span></span>
     <span class="chip" id="c-vwap"><b>VWAP</b><span>-</span></span>
     <span class="chip" id="c-vol" title="Today's volume (premarket included)"><b>Vol</b><span>-</span></span>
+    <span class="chip" id="c-float" title="Float"><b>Float</b><span>-</span><i class="fage"></i></span>
     <span class="chip halt" id="c-halt" title="IB reports a trading halt. The short limit cannot fill while the stock is halted.">HALTED</span>
   </div>
   <div class="spacer"></div>
@@ -177,18 +178,30 @@ __APP_CSS__
     <span class="sm">Up at least</span><div class="seg2" id="sc-up"><button data-v="30">30%</button><button data-v="50">50%</button><button data-v="100">100%</button><button data-v="150">150%</button></div>
     <span class="sm">Price from</span><div class="seg2" id="sc-px"><button data-v="0.5">$0.50</button><button data-v="1">$1</button><button data-v="2">$2</button></div></div>
   <div class="scb">
-    <div class="sct"><div class="scgrid sch2"><span>#</span><span>Symbol</span><span class="r">Last</span><span class="r">Change</span><span class="r">Volume</span><span class="r">$ Volume</span><span class="r">Vol / avg</span><span class="r">From high</span><span>Bot</span><span></span></div>
+    <div class="sct"><div class="scgrid sch2"><span>#</span><span>Symbol</span><span class="r">Last</span><span class="r">Change</span><span class="r">Float</span><span class="r">Volume</span><span class="r">$ Volume</span><span class="r">Vol / avg</span><span class="r">From high</span><span>Bot</span><span></span></div>
       <div class="sclist" id="sc-list"></div></div>
     <aside class="scd" id="sc-det"></aside>
   </div>
 </section>
 <section class="screen" id="scr-journal" aria-label="Journal">
-  <div class="sch"><span class="st">Journal</span><div class="seg2" id="jr-rng"><button data-v="today">Today</button><button data-v="week">Week</button><button data-v="month">Month</button><button data-v="all">All</button></div>
+  <div class="sch"><span class="st">Journal</span><div class="seg2" id="jr-view"><button data-v="trades" class="on">Trades</button><button data-v="missed">Missed</button><button data-v="heat">Heat map</button></div>
+    <div class="seg2" id="jr-rng"><button data-v="today">Today</button><button data-v="week">Week</button><button data-v="month">Month</button><button data-v="all">All</button></div>
     <span class="sm" id="j-meta"></span><div class="spacer"></div><span class="sm" id="j-src">From the bot's trade journals - real fills</span><button class="sbtn" id="jr-csv">Export CSV</button></div>
-  <div class="jbody">
+  <div class="jbody" id="jv-trades">
     <div class="jkpi" id="j-kpi"></div>
     <div class="jrow"><div class="jcard" id="j-cal"></div><div class="jcard"><div class="jt">Equity <span class="sm">cumulative P&amp;L, trade by trade</span></div><svg id="j-eq" viewBox="0 0 800 240"></svg></div></div>
     <div class="jrow"><div class="jcard" id="j-strat"></div><div class="jcard"><div class="jt">Trades <span class="sm">newest first - click a symbol for its chart</span></div><div class="jtl" id="j-trades"></div></div></div>
+  </div>
+  <div class="jbody hidden" id="jv-missed">
+    <div class="jkpi mskpi" id="ms-kpi"></div>
+    <div class="jcard msreasons"><span class="mh" style="padding:0;margin-right:6px">BY REASON</span><span id="ms-cats"></span></div>
+    <div class="jcard" style="padding:0;overflow:hidden"><div class="msrow2 h"><span>Time</span><span>Ticker</span><span>Strategy</span><span class="r">Signal</span><span>Reason</span>
+      <span class="r">Would-have exit</span><span>Exit</span><span class="r">Move</span><span class="r">Would-have P&amp;L</span><span></span></div><div id="ms-list"></div></div>
+    <div class="sm" style="white-space:normal">Each missed signal is followed with the strategy's own exit rules (stop, lock, 15:55 cover; the long: its stop, half, trail and time stop); the result fills in when that exit happens. Sizing = the live sizing of that moment, shorts after a 3% locate.</div>
+  </div>
+  <div class="jbody hidden" id="jv-heat">
+    <div class="jcard"><div class="jt"><span>Net P&amp;L by weekday and hour <span class="sm">after locates - cell = P&amp;L and trades</span></span>
+      <div class="seg2" id="hm-strat"></div></div><div class="hm" id="hm-grid"></div></div>
   </div>
 </section>
 <section class="screen" id="scr-bot" aria-label="Bot center">
@@ -196,6 +209,7 @@ __APP_CSS__
     <button class="sbtn danger" id="bc-pause">Pause new entries</button></div>
   <div class="bcb">
     <div class="bccards" id="bc-cards"></div>
+    <div class="bcrow3"><div class="jcard" id="bc-mc"></div><div class="bccol"><div class="jcard" id="bc-sc"></div><div class="jcard bcwd" id="bc-wd"></div></div></div>
     <div class="bcrow2"><div class="jcard"><div class="jt">Event feed <div class="seg2" id="bc-ft"><button data-v="all">All</button><button data-v="trade">Trades</button><button data-v="warn">Warnings</button></div></div><div class="bcfeed" id="bc-feed"></div></div>
       <div class="jcard" id="bc-health"></div></div>
   </div>
@@ -303,6 +317,7 @@ __APP_CSS__
   <nav class="setnav" id="set-nav" aria-label="Settings sections">
     <div class="snh">Settings</div>
     <button data-sec="trading" class="on"><svg class="sni" viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 5-6"/></svg>Trading</button>
+    <button data-sec="strat"><svg class="sni" viewBox="0 0 24 24"><path d="M4 6h10M4 12h6M4 18h12"/><circle cx="17" cy="6" r="2"/><circle cx="13" cy="12" r="2"/><circle cx="19" cy="18" r="2"/></svg>Strategies</button>
     <button data-sec="sig"><svg class="sni" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>Signals <span class="cnt" id="s-sig"></span></button>
     <button data-sec="skip"><svg class="sni" viewBox="0 0 24 24"><path d="M6 5v14l9-7z"/><path d="M18 5v14"/></svg>Skipped signals <span class="cnt" id="s-skip"></span></button>
     <button data-sec="log"><svg class="sni" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>Bot log</button>
@@ -313,6 +328,7 @@ __APP_CSS__
   </nav>
   <div class="setbody">
     <section class="setsec on" id="set-trading"><div class="seth">Trading</div></section>
+    <section class="setsec" id="set-strat"><div class="seth">Strategies</div><div id="ss-body"></div></section>
     <section class="setsec" id="set-sig"><div class="seth">Signals</div></section>
     <section class="setsec" id="set-skip"><div class="seth">Skipped signals</div></section>
     <section class="setsec" id="set-log"><div class="seth">Bot log</div></section>
@@ -361,6 +377,7 @@ __APP_CSS__
   <div class="kt">Real-time news (News tab)</div>
   <label>Alpaca API key ID<input id="n-id" autocomplete="off" spellcheck="false" placeholder="free account: alpaca.markets - API keys"></label>
   <label>Alpaca secret key<input id="n-sec" type="password" autocomplete="off" spellcheck="false" placeholder="leave empty to keep the saved secret"></label>
+  <label>Alpha Vantage key (float)<input id="n-av" type="password" autocomplete="off" spellcheck="false" placeholder="free key: alphavantage.co - 25 lookups a day"></label>
   <label>Your e-mail for the SEC<input id="n-mail" autocomplete="off" spellcheck="false" placeholder="name@example.com - the SEC asks every program reading its filings for one"></label>
   <div class="kst" id="n-st"></div>
   <div class="kbtns"><button class="sbtn pri" id="n-save">Save and connect</button></div>
@@ -371,6 +388,16 @@ __APP_CSS__
   <label>New stop price<input id="s-px" autocomplete="off" spellcheck="false" inputmode="decimal"></label>
   <div class="kst" id="s-st"></div>
   <div class="kbtns"><button class="sbtn" id="s-cancel">Cancel</button><button class="sbtn pri" id="s-save">Move stop</button></div>
+</div></div>
+<div id="sd-ov" class="kov hidden"><div class="kbox" style="width:480px">
+  <div style="display:flex;align-items:center;gap:18px"><svg width="74" height="74" viewBox="0 0 74 74"><circle cx="37" cy="37" r="32" fill="none" stroke="#1e293b" stroke-width="6"/>
+    <circle id="sd-ring" cx="37" cy="37" r="32" fill="none" stroke="#6366f1" stroke-width="6" stroke-linecap="round" stroke-dasharray="201" stroke-dashoffset="0" transform="rotate(-90 37 37)"/>
+    <text id="sd-t" x="37" y="42" text-anchor="middle" fill="#fff" font-size="16" font-weight="700">5:00</text></svg>
+    <div><div class="kt" style="margin:0">Market closed</div><div class="ks" id="sd-sub">The bot shuts down in 5:00 unless you keep it running.</div></div></div>
+  <div class="ks" style="display:flex;flex-direction:column;gap:8px;margin:14px 0">
+    <div><span class="dot ok"></span>&nbsp; Daily summary sent to Discord</div><div><span class="dot ok"></span>&nbsp; No open positions · no working orders</div>
+    <div><span class="dot ok"></span>&nbsp; Trades saved · vault feed list sent on shutdown</div></div>
+  <div class="kbtns"><button class="sbtn" id="sd-keep">Keep running</button><button class="sbtn pri" id="sd-now">Shut down now</button></div>
 </div></div>
 <div id="close-ov" class="kov hidden"><div class="kbox">
   <div class="kt">Positions are open - close them first?</div>

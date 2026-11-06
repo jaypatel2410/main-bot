@@ -1153,9 +1153,32 @@ class Trader:
         if self.eng is not None:
             self.eng.close_minute(minute_t)
 
+    def _missed(self):
+        """3.15: the bot's missed-trade log (None when the long runs without the app, e.g. the replay)."""
+        return getattr(getattr(self.bot, "host", None), "missed", None)
+
+    def _miss(self, sig, why):
+        """3.15: a long signal not taken -> the missed-trade log (a copy of this engine follows it to its exit)."""
+        m = self._missed()
+        if m is None or self.eng is None:
+            return
+        try:
+            px = float(sig["trigger"])
+            eq = self.bot.equity() or 0.0
+            shares = LongEngine.size_for(sig, px, eq) if eq > 0 else int(MAX_POSITION_USD / px) // 2 * 2
+            m.long(self.sym, "Premarket long", self.eng, sig, px, shares, why, self.bot.now(), FLATTEN_S)
+        except Exception:
+            log.exception("%s missed long", self.sym)
+
     def _on_bar10(self, bar):
         if self.eng is None:
             return
+        m = self._missed()
+        if m is not None and not self.seeding:            # 3.15: missed longs follow the same candles
+            try:
+                m.long_bar(self.sym, bar)
+            except Exception:
+                log.exception("%s missed long bar", self.sym)
         for ev in self.eng.on_bar_10s(bar):
             if ev["type"] == "exit" and not self.busy() and self.day.pos is not None:
                 self._spawn(self._exit(ev["reason"], ev["shares"]))
@@ -1196,6 +1219,12 @@ class Trader:
             self.bot.notify(f"❌ {self.sym}: order step failed", f"{exc.__class__.__name__}: {exc}", "err")
 
     def on_price(self, p):
+        m = self._missed()
+        if m is not None and m.open:                      # 3.15: missed longs follow the ticks too
+            try:
+                m.long_price(self.sym, p, self.bot.now())
+            except Exception:
+                log.exception("%s missed long tick", self.sym)
         if not self.active or self.eng is None or self.busy():
             return
         now = self.bot.now()
@@ -1217,6 +1246,8 @@ class Trader:
             self.block_key = sig["key"]
             self.bot.log_once((self.sym, sig["key"]), f"{self.sym}: {sig['strategy']} trigger {_fp(sig['trigger'])} - "
                                                       f"not taken ({why})")
+            if why != "entries closed":
+                self._miss(sig, why)
             return
         self._spawn(self._enter(sig))
 
@@ -1239,12 +1270,14 @@ class Trader:
             self.block_key = key
             bot.log_once((self.sym, key), f"{self.sym}: {sig['strategy']} trigger {_fp(sig['trigger'])} but ask "
                                           f"{_fp(ask)} is {(ask / sig['trigger'] - 1) * 100:.1f}% above - skipped")
+            self._miss(sig, f"ask {(ask / sig['trigger'] - 1) * 100:.1f}% over the trigger (chase cap)")
             return
         eq = bot.equity()
         if eq <= 0:
             self.block_key = key
             bot.log_once((self.sym, key, "eq"), f"{self.sym}: {sig['strategy']} trigger {_fp(sig['trigger'])} - not "
                                                  f"taken (account equity unknown - is TradeZero connected?)")
+            self._miss(sig, "account equity unknown")
             return
         shares = LongEngine.size_for(sig, ask, eq)
         self.day.loss_limit = stock_loss_limit(eq)
@@ -1253,10 +1286,12 @@ class Trader:
             shares = int(bp * 0.95 / ask) // 2 * 2
         if shares < 2:
             self.block_key = key
+            self._miss(sig, "buying power too small for 2 shares")
             return
         why = bot.why_no_entry(self.sym)                  # re-checked right before the order (the short side may
         if why:                                           # have changed meanwhile)
             self.block_key = key
+            self._miss(sig, why)
             return
         limit = px_round(ask, up=True)
         coid = bot.coid(self.sym, "B")

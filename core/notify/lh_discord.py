@@ -153,12 +153,12 @@ class Discord:
                 pass
         return True
 
-    def send_now(self, title, text="", kind="info", fields=None, quick=False, tag=None, username=None):
+    def send_now(self, title, text="", kind="info", fields=None, quick=False, tag=None, username=None, ping=False):
         """Blocking send (Test button, app closing): returns (ok, message). quick = one short try."""
         if not self.on:
             return False, "the webhook URL is not a Discord webhook URL"
         tag, title = dc_style(title, kind, tag)
-        ok = self._post({"title": title, "text": text, "kind": kind, "fields": fields or [], "image": None, "ping": False,
+        ok = self._post({"title": title, "text": text, "kind": kind, "fields": fields or [], "image": None, "ping": bool(ping),
                          "ts": datetime.now(timezone.utc).isoformat(), "tag": tag, "username": username}, quick=quick)
         return ok, ("sent" if ok else self.last_error)
 

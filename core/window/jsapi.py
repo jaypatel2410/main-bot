@@ -340,7 +340,26 @@ class JsApi:
 
     def news_keys(self):
         return {"alpacaId": env_get("ALPACA_API_KEY", ""), "hasSecret": bool(env_get("ALPACA_SECRET_KEY", "")),
-                "secMail": env_get("SEC_CONTACT_EMAIL", "")}
+                "secMail": env_get("SEC_CONTACT_EMAIL", ""), "hasAv": bool(env_get("ALPHAVANTAGE_API_KEY", ""))}
+
+    def av_save(self, key):
+        """3.15: the Alpha Vantage key (float). Empty = keep the saved one."""
+        key = str(key or "").strip()
+        if not key:
+            return {"ok": True}
+        if not re.fullmatch(r"[A-Za-z0-9]{8,40}", key):
+            return {"ok": False, "error": "That does not look like an Alpha Vantage key"}
+        try:
+            return {"ok": True, "file": env_write({"ALPHAVANTAGE_API_KEY": key})}
+        except Exception as exc:
+            return {"ok": False, "error": f"Could not save: {exc}"}
+
+    def float_get(self, sym):
+        fl = getattr(self._backend, "floats", None)
+        if fl is None:
+            return {"ok": False}
+        v = fl.peek(str(sym or "").upper(), priority=True)
+        return {"ok": True, "sym": str(sym or "").upper(), **(v or {}), "left": fl.lookups_left()}
 
     def news_save(self, key_id, secret, mail):
         key_id, secret, mail = str(key_id or "").strip(), str(secret or "").strip(), str(mail or "").strip()
@@ -771,6 +790,133 @@ class JsApi:
         except Exception as exc:
             log.exception("journal")
             return {"ok": False, "error": str(exc) or exc.__class__.__name__}
+
+    # ---- 3.15: Journal > Missed - the signals the bot did not take, followed to their would-have exit ----
+    def _missed_range(self, rng):
+        today = self._backend.now_et().date()
+        if rng == "today":
+            return str(today)
+        if rng == "week":
+            return str(today - timedelta(days=today.weekday()))
+        if rng == "month":
+            return str(today.replace(day=1))
+        return "0000-00-00"
+
+    def missed_list(self, rng="today"):
+        b = self._bot()
+        m = getattr(b, "missed", None) if b is not None else None
+        if m is None:
+            return {"ok": False, "error": "the missed-trade log is not running", "rows": []}
+        rows = m.list(self._missed_range(str(rng)))
+        done = [r for r in rows if r["pnl"] is not None]
+        cats = {}
+        for r in rows:
+            c = cats.setdefault(r["cat"], {"n": 0, "pnl": 0.0})
+            c["n"] += 1
+            c["pnl"] += r["pnl"] or 0.0
+        return {"ok": True, "rows": rows, "n": len(rows), "pnl": round(sum(r["pnl"] for r in done), 2),
+                "wins": sum(1 for r in done if r["pnl"] > 0), "done": len(done), "open": len(rows) - len(done),
+                "cats": cats}
+
+    def missed_csv(self, rng="today"):
+        r = self.missed_list(rng)
+        if not r.get("ok"):
+            return r
+        name = f"lh_missed_{rng}_{self._backend.now_et().date()}.csv"
+        path = None
+        try:
+            import webview
+            if self._window is not None:
+                kind = getattr(getattr(webview, "FileDialog", None), "SAVE", None) or getattr(webview, "SAVE_DIALOG", 30)
+                res = self._window.create_file_dialog(kind, save_filename=name)
+                path = res[0] if isinstance(res, (list, tuple)) and res else res
+                if not path:
+                    return {"ok": False, "error": "cancelled"}
+        except Exception:
+            path = None
+        if not path:
+            path = os.path.join(os.path.expanduser("~"), "Documents", name)
+            if not os.path.isdir(os.path.dirname(path)):
+                path = os.path.join(DATA_DIR, name)
+        import csv as _csv
+        cols = ["day", "sym", "strat", "setup", "side", "px", "stop", "qty", "reason", "cat", "exit_px", "exit_why", "move",
+                "locate", "pnl", "state"]
+        with open(path, "w", encoding="utf-8", newline="") as fh:
+            w = _csv.writer(fh)
+            w.writerow(["date", "time"] + cols[1:])
+            for x in r["rows"]:
+                tm = datetime.fromtimestamp(x["t"], timezone.utc).strftime("%H:%M:%S")
+                w.writerow([x["day"], tm] + [x.get(c, "") for c in cols[1:]])
+        return {"ok": True, "file": path, "n": len(r["rows"])}
+
+    def shutdown_keep(self):
+        log.info("16:05 auto shutdown: kept running")
+        return {"ok": True}
+
+    # ---- 3.15: Bot center - the morning check ----
+    def morning_check(self, send=False):
+        b = self._bot()
+        if b is None:
+            return {"ok": False, "error": "the bot is not running"}
+        try:
+            if send and getattr(b, "mcheck", None):
+                b.loop.call_soon_threadsafe(b._mcheck_discord)
+                return {"ok": True, "check": b.mcheck}
+            mc = asyncio.run_coroutine_threadsafe(b._morning_check("now", send=bool(send)), b.loop).result(timeout=20)
+            return {"ok": True, "check": mc}
+        except Exception as exc:
+            log.exception("morning check")
+            return {"ok": False, "error": str(exc) or exc.__class__.__name__}
+
+    # ---- 3.15: Settings > Strategies ----
+    def strat_view(self, k):
+        try:
+            import strat_settings as S
+            if k not in S.FIELDS:
+                return {"ok": False, "error": "unknown strategy"}
+            return {"ok": True, **S.view(k), "list": [{"k": kk, "name": S.FIELDS[kk]["name"]} for kk in S.FIELDS]}
+        except Exception as exc:
+            log.exception("strat_view")
+            return {"ok": False, "error": str(exc)}
+
+    def strat_save(self, k, changes, reset=False):
+        """changes = {key: value} (shown units already turned back into the setting's own). Checked, saved, applied to the
+        loaded strategy and every live stock's engine on the bot's loop (new signals use them; an open position keeps its
+        stop). reset = back to the strategy file's values."""
+        try:
+            import strat_settings as S
+            if k not in S.FIELDS:
+                return {"ok": False, "error": "unknown strategy"}
+            data = S.load()
+            cur = {} if reset else dict(data.get(k, {}))
+            errs = {}
+            for key, v in (changes or {}).items():
+                ok, val = S.check(k, key, v)
+                if not ok:
+                    errs[key] = val
+                    continue
+                if val == S.default(k, key):
+                    cur.pop(key, None)
+                else:
+                    cur[key] = val
+            if errs:
+                return {"ok": False, "error": "check the marked fields", "fields": errs}
+            if cur:
+                data[k] = cur
+            else:
+                data.pop(k, None)
+            S.save(data)
+            b = self._bot()
+            if b is not None:
+                books = [bs.jr for bs in b.syms.values() if getattr(bs, "jr", None) is not None]
+                b.loop.call_soon_threadsafe(lambda: S.apply(k, cur, books))
+            else:
+                S.apply(k, cur)
+            log.info("strategy settings %s saved: %s", k, cur)
+            return {"ok": True, **S.view(k)}
+        except Exception as exc:
+            log.exception("strat_save")
+            return {"ok": False, "error": str(exc)}
 
     def journal_csv(self, rng="month"):
         """Save the journal's trades of the range as a CSV (no account column) - asks where."""

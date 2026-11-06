@@ -49,7 +49,7 @@ echo [4/4] Building the .exe (takes 1-3 minutes) ...
 pyinstaller --noconfirm --clean --onefile --windowed --name LHShortBot ^
   --collect-data tzdata --collect-data pytz --hidden-import matplotlib.backends.backend_agg ^
   --hidden-import lh_long_premarket --hidden-import jay_read_short --hidden-import jay_read_2_short --hidden-import max_squeeze_short ^
-  --hidden-import IB --hidden-import Tradezero --hidden-import lh_discord --hidden-import lh_backtest --hidden-import vault_feed --hidden-import tickfeed --hidden-import turso --hidden-import turso_vault --hidden-import newsfeed --hidden-import websockets --hidden-import chart_notes ^
+  --hidden-import IB --hidden-import Tradezero --hidden-import lh_discord --hidden-import lh_backtest --hidden-import vault_feed --hidden-import tickfeed --hidden-import turso --hidden-import turso_vault --hidden-import newsfeed --hidden-import websockets --hidden-import tradedb --hidden-import missed --hidden-import strat_settings --hidden-import floats --hidden-import chart_notes ^
   --hidden-import lh_combined_backtester --hidden-import lh_vault_bars --paths . ^
   --paths core --paths core\data --paths core\broker --paths core\notify --paths core\backtest_engine --hidden-import webview --hidden-import winsound --hidden-import pytz --hidden-import zoneinfo --hidden-import csv ^
   --add-data "core;core" --add-data "ui;ui" ^

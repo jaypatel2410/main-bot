@@ -384,6 +384,8 @@ class Backend:
         asyncio.run_coroutine_threadsafe(self._load(sym), self.loop)
         if getattr(self, "news", None) is not None:   # 3.14: the News pane follows the chart
             self.news.set_symbol(sym)
+        if getattr(self, "floats", None) is not None:  # 3.15: its float first in the queue
+            self.floats.peek(sym, priority=True)
 
     def request_reconnect(self):
         self.loop.call_soon_threadsafe(self._force_reconnect)
@@ -836,6 +838,13 @@ class Backend:
                 self.news.set_symbol(self.pending_sym or (self.state.sym if self.state is not None else ""))
             except Exception:
                 log.exception("news feed")
+        if getattr(self, "floats", None) is None:   # 3.15: float (Alpha Vantage / SEC) for the chip and the scanner
+            try:
+                import floats as _floats
+                self.floats = _floats.Floats(app.env_get, app.DATA_DIR,
+                                             lambda sym, v: self.bridge.call("floatInfo", dict(v, sym=sym)), log)
+            except Exception:
+                log.exception("floats")
         await self._ensure_connected()
 
     async def _ensure_connected(self):
@@ -1454,7 +1463,9 @@ class Backend:
                 ok = chg is not None and chg >= g
                 chips.append({"k": "long", "ok": ok, "t": "Premarket long: " + (f"up {g:g}% - in its own scan" if ok
                                                                                else f"needs up {g:g}%")})
+            fl = self.floats.peek(sym) if getattr(self, "floats", None) is not None else None    # 3.15
             rows.append({"n": i, "sym": sym, "last": app._f(last), "pc": app._f(pc), "chg": app._f(chg, 1), "hi": app._f(hi),
+                         "float": fl and {"v": fl["v"], "kind": fl["kind"], "age": fl["age"], "src": fl["src"], "asof": fl.get("asof", "")},
                          "vol": app._f(vol, 0), "dol": app._f(dol, 0), "rvol": app._f(vol / avg, 1) if avg else None,
                          "from": app._f(frm, 1), "halt": app._num(getattr(tk, "halted", None)) is not None,
                          "watch": bs is not None, "status": bs.status if bs is not None else "", "chips": chips})

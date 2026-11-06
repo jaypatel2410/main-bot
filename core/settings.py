@@ -105,6 +105,9 @@ SQUEEZE_FILE = "max_squeeze_short.py"  # imported as max_squeeze_short - keep th
 SHORT_SCANNER = True               # False = you add the tickers yourself (stocks up 100%+, before the high fades)
 SHORT_SCAN_MIN_UP_PCT = 100.0      # add stocks up at least this % from the prior close (Jay-read itself needs 150%)
 SHORT_SCAN_MIN_PRICE = 0.50
+SHORT_MIN_PRICE = 1.00             # 3.15: no short when the signal candle closes under this - TradeZero rejects shorts under
+                                   # $1 ("R40"). Same filter as the backtest (MIN_SHORT_PRICE in lh_combined_backtester.py).
+                                   # The scanner checks the price only when it adds a stock - LABT 11-05 dipped to 0.484 later
 SHORT_SCAN_START = "07:00"         # scanning window (ET, weekdays)
 SHORT_SCAN_END = "15:00"
 SHORT_SCAN_INTERVAL_SEC = 30
@@ -161,6 +164,9 @@ DISCORD_CHART_MINUTES = 150        # minutes of candles on the chart image (trad
 DISCORD_IMAGE_MIN_GAP_SEC = 20     # at most one picture set per symbol this often (setups, locates, orders, fills, stops,
                                    # covers, exits and alerts always get one)
 DISCORD_HEARTBEAT_MIN = 30         # status message every N minutes from 4:00 to 20:00 ET (0 = off)
+AUTO_SHUTDOWN_SEC = 300            # 3.15: after the 16:05 summary the app closes in this many seconds unless you keep it
+                                   # running (never with a position or a working order open - Discord instead). 0 = off
+WATCHDOG_STALL_SEC = 60            # 3.15: the main loop silent this long = Discord @everyone (a frozen bot / busy PC)
 NEWS_OFFERING_DISCORD = True        # 3.14: offering news (Alpaca / SEC) on a stock you follow (watchlist, scanner, chart) -> Discord ping
 IB_REPORT_TIMES = ("10:00", "12:00")  # 3.14: the IB portfolio (market value, today's P&L, unrealized - in CAD) to Discord
                                    # at these ET times on weekdays. () = off

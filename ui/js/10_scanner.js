@@ -36,7 +36,9 @@
     if (rows.length && !rows.some(x => x.sym === scanSel)) scanSel = rows[0].sym;
     $('sc-list').innerHTML = rows.length ? rows.map(r => `<div class="scrow scgrid${r.sym === scanSel ? ' sel' : ''}" data-sc="${esc(r.sym)}">` +
       `<span class="o-t">${r.n}</span><span class="sc-sym"><b>${esc(r.sym)}</b>${r.halt ? '<i>HALT</i>' : ''}</span><span class="r">${fmtPx(r.last)}</span>` +
-      `<span class="r sc-chg${(r.chg || 0) < 0 ? ' neg' : ''}">${pct(r.chg)}</span><span class="r">${fmtV(r.vol)}</span>` +
+      `<span class="r sc-chg${(r.chg || 0) < 0 ? ' neg' : ''}">${pct(r.chg)}</span>` +
+      `<span class="r scfl" title="${r.float ? esc(`${r.float.kind === 'O/S' ? 'Shares outstanding' : 'Float'} - ${r.float.src}, ${r.float.asof || ''}`) : 'not known yet'}">${r.float ? fmtV(r.float.v) + (r.float.kind === 'O/S' ? '<small>O/S</small>' : '') : '-'}</span>` +
+      `<span class="r">${fmtV(r.vol)}</span>` +
       `<span class="r">${r.dol ? '$' + fmtV(r.dol) : '-'}</span><span class="r">${r.rvol == null ? '-' : r.rvol.toFixed(1) + 'x'}</span>` +
       `<span class="r">${r.from == null ? '-' : '-' + r.from.toFixed(0) + '%'}</span><span style="min-width:0;overflow:hidden">${scanChips(r)}</span>` +
       `<span class="scbtn"><button class="sbtn" data-scc="${esc(r.sym)}">Chart</button>` +
@@ -49,6 +51,16 @@
     const sel = ((scan && scan.rows) || []).find(x => x.sym === scanSel);
     $('sc-det').innerHTML = sel ? scanDetail(sel) : '<div class="sm">Click a row for the details.</div>';
   }
+  // ---- 3.15: the Float chip (Alpha Vantage / SEC, with its age - free data can be old after an offering) ----
+  let flSym = '', flInfo = null;
+  function floatChip(){
+    const c = $('c-float'), f = flInfo && flInfo.sym === sym && flInfo.v ? flInfo : null;
+    c.querySelector('span').textContent = f ? fmtV(f.v) + (f.kind === 'O/S' ? ' O/S' : '') : '-';
+    c.querySelector('.fage').textContent = f ? (f.age === 0 ? 'today' : f.age + 'd') : '';
+    c.title = f ? `${f.kind === 'O/S' ? 'Shares outstanding (last SEC filing)' : 'Float'} - ${f.src}, as of ${f.asof || '?'}` : 'Float - not known yet';
+  }
+  setInterval(() => { if (sym && sym !== flSym) { flSym = sym; flInfo = null; floatChip();
+    api('float_get', sym).then(r => { if (r && r.ok && r.sym === sym) { flInfo = r; floatChip(); } }); } }, 500);
   // main chart page: compact live scanner under the watchlist (symbol, last, % up); click = load that chart
   function renderMiniScan(){
     const p = scan || {rows: [], err: ''}, rows = p.rows || [];

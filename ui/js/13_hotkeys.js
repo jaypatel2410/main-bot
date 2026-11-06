@@ -264,6 +264,8 @@
     news(n){ newsAdd(n); },
     newsStatus(s){ nwStatus = s || {}; renderNews(); },
     newsReset(s){ newsReset(s); },
+    shutdownPrompt(p){ shutdownPrompt(p); },
+    floatInfo(p){ if (p && p.sym === sym) { flInfo = p; floatChip(); } },
     setLocate(p){ loc = p; locRecv = Date.now() / 1000; renderLoc(); },
     askClose(p){ askClose(p); },
     orderMsg(m){ toast(m); },

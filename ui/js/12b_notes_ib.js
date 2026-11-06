@@ -33,21 +33,23 @@
     if (ntVerd !== 'all' && !cnt[ntVerd]) ntVerd = 'all';
     $('nt-verd').innerHTML = `<button data-v="all" class="${ntVerd === 'all' ? 'on' : ''}">All<b>${ntItems.length}</b></button>` +
       Object.keys(cnt).sort().map(v => `<button data-v="${esc(v)}" class="${ntVerd === v ? 'on' : ''}">${esc(v)}<b>${cnt[v]}</b></button>`).join('');
+    // compact list: a header per day (or per ticker), then one row per ticker (or day) with its number of notes
     const S = ntShown();
-    if (ntGrp === 'tk') S.sort((a, b) => a.tk < b.tk ? -1 : a.tk > b.tk ? 1 : a.day < b.day ? 1 : -1);
-    let head = '', html = '';
+    S.sort((a, b) => ntGrp === 'tk' ? (a.tk < b.tk ? -1 : a.tk > b.tk ? 1 : a.day < b.day ? 1 : -1)
+      : (a.day < b.day ? 1 : a.day > b.day ? -1 : a.tk < b.tk ? -1 : 1));
+    const groups = [];
     for (const x of S) {
-      const g = ntGrp === 'tk' ? x.tk : ntDayLab(x.day);
-      if (g !== head) { head = g; html += `<div class="ntg">${esc(g)}</div>`; }
-      const last = x.notes.length ? x.notes[x.notes.length - 1].text : (x.verdicts.length ? 'Verdict only' : '');
-      const pnl = x.trades.length ? x.trades.reduce((a, t) => a + (t.pnl || 0), 0) : null;
-      const strat = x.trades.length ? x.trades[0].strat : x.verdicts.length ? x.verdicts[0].strat : 'Live chart';
-      html += `<div class="ntrow${ntKey(x) === ntSel ? ' sel' : ''}" data-nk="${esc(ntKey(x))}"><div class="t"><b>${esc(x.tk)}</b>` +
-        `<span class="sm">${esc(ntGrp === 'tk' ? ntDayLab(x.day) : strat)}</span><div class="spacer"></div>` +
-        (x.verdicts.length ? `<span class="ntvd ${ntVcls(x.verdicts[0].v)}">${esc(x.verdicts[0].v)}</span>` : '') + '</div>' +
-        `<div class="x">${esc(last)}</div><div class="f"><span>${x.notes.length} note${x.notes.length === 1 ? '' : 's'}</span>` +
-        (pnl != null ? `<span class="${pnl > 0 ? 'grn' : pnl < 0 ? 'red' : ''}" style="color:${pnl > 0 ? 'var(--pos)' : pnl < 0 ? 'var(--neg)' : 'inherit'}">${btm(pnl)}</span>` : '') +
-        x.src.map(s => `<span class="ntsrc">${s === 'live' ? 'live' : 'backtest'}</span>`).filter((v, i, a) => a.indexOf(v) === i).join('') + '</div></div>';
+      const g = ntGrp === 'tk' ? x.tk : x.day;
+      if (!groups.length || groups[groups.length - 1].g !== g) groups.push({g, xs: []});
+      groups[groups.length - 1].xs.push(x);
+    }
+    let html = '';
+    for (const {g, xs} of groups) {
+      const n = xs.length, what = ntGrp === 'tk' ? 'day' : 'ticker';
+      html += `<div class="ntg"><span>${esc(ntGrp === 'tk' ? g : ntDayLab(g))}</span><span>${n} ${what}${n === 1 ? '' : 's'}</span></div>`;
+      html += xs.map(x => { const k = x.notes.length;
+        return `<div class="ntrow${ntKey(x) === ntSel ? ' sel' : ''}" data-nk="${esc(ntKey(x))}"><b>${esc(ntGrp === 'tk' ? ntDayLab(x.day) : x.tk)}</b>` +
+          `<span class="c">${k ? `${k} note${k === 1 ? '' : 's'}` : 'verdict only'}</span></div>`; }).join('');
     }
     $('nt-list').innerHTML = html || `<div class="oempty">${ntItems.length ? 'Nothing matches this filter.' : 'No notes yet. Right click the live chart or a backtest chart and pick Add note.'}</div>`;
     const sel = S.find(x => ntKey(x) === ntSel) || S[0];

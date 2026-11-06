@@ -355,7 +355,7 @@ from IB import (  # noqa: E402,F401
 
 _part("strategy_v16.py")
 _part("data/helpers.py")
-for _bp in ("status.py", "orders.py", "stops_halts.py", "sizing.py", "reconcile.py", "bot_core.py"):
+for _bp in ("status.py", "orders.py", "stops_halts.py", "sizing.py", "reconcile.py", "checks.py", "bot_core.py"):
     _part("bot/" + _bp)                          # the Bot class: 5 parts (mixins) + bot_core.py (class Bot)
 _part("window/jsapi.py")
 

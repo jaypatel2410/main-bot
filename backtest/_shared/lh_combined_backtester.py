@@ -95,7 +95,8 @@ SHORT_STRATEGY = "jay_read"        # "jay_read" = Jay-read short v1.2 (jay_read_
                                    # "v16"      = the parked bounce-zone + vacuum short (LH Short Bot 3.6.4)
 JAY_READ_FILE = "jay_read_short.py"  # the Jay-read module (looked up next to this file, then in the current folder)
 SQUEEZE_ENABLED = True             # 3.9.0: the max squeeze short next to the Jay-read short (one position per stock)
-MIN_SHORT_PRICE = 0.50             # 3.13.1: no short signal under this price (the live short scanner's $0.50 minimum)
+MIN_SHORT_PRICE = 1.00             # 3.15: no short signal under this price - as the live bot (SHORT_MIN_PRICE): TradeZero
+                                   # rejects shorts under $1 (3.13.1: was 0.50, the live short scanner's minimum)
 SQUEEZE_FILE = "max_squeeze_short.py"  # the max squeeze module (next to this file, then in the current folder)
 MAX_RISK_PER_TRADE_USD = None      # Jay-read shorts: shares cut so (stop - entry) x shares <= this $ (the app's setting,
                                    # None there too since 3.7.2).

@@ -40,8 +40,9 @@ log = logging.getLogger("lh_app")
 ENV_FILE_NAME = ".env"
 ENV_KEYS = ("TZ_API_KEY_ID", "TZ_API_SECRET", "TZ_ACCOUNT_ID", "TZ_ROUTE", "DISCORD_WEBHOOK_URL", "DISCORD_MENTION",
             "IB_HOST", "IB_PORT", "IB_CLIENT_ID", "VAULT_DB", "TURSO_DATABASE_URL", "TURSO_AUTH_TOKEN", "ALPACA_API_KEY",
-            "ALPACA_SECRET_KEY", "SEC_CONTACT_EMAIL")
-ENV_SECRET = ("TZ_API_KEY_ID", "TZ_API_SECRET", "TZ_ACCOUNT_ID", "DISCORD_WEBHOOK_URL", "TURSO_AUTH_TOKEN", "ALPACA_SECRET_KEY")
+            "ALPACA_SECRET_KEY", "SEC_CONTACT_EMAIL", "ALPHAVANTAGE_API_KEY")
+ENV_SECRET = ("TZ_API_KEY_ID", "TZ_API_SECRET", "TZ_ACCOUNT_ID", "DISCORD_WEBHOOK_URL", "TURSO_AUTH_TOKEN", "ALPACA_SECRET_KEY",
+              "ALPHAVANTAGE_API_KEY")
 ENV_ALIASES = {"TZ_API_SECRET_KEY": "TZ_API_SECRET", "TRADEZERO_API_KEY_ID": "TZ_API_KEY_ID",
                "TRADEZERO_API_SECRET": "TZ_API_SECRET", "DISCORD_WEBHOOK": "DISCORD_WEBHOOK_URL"}
 ENV_TEMPLATE = """# LH Short Bot - every credential in one file (3.11).
@@ -77,6 +78,9 @@ TURSO_AUTH_TOKEN=
 ALPACA_API_KEY=
 ALPACA_SECRET_KEY=
 SEC_CONTACT_EMAIL=
+
+# Float (scanner column + top-bar chip): a free Alpha Vantage key (25 lookups a day). Empty = SEC shares outstanding only
+ALPHAVANTAGE_API_KEY=
 
 # Live trading is NOT switched on here: it needs ALLOW_LIVE_TRADING = True in main.py.
 """
@@ -1356,6 +1360,35 @@ def tz_round_trips(fills, file_rows=None):
     return rows
 
 
+def _attach_locates(tr, lo, hi):
+    """3.15: the locates of the trade database (bot + the locate window) per stock-day. A trade keeps the locate cost its
+    journal row has; a stock-day whose trades carry none gets that day's locate cost on its first trade (net lowered).
+    Every trade gets the locate type (pre-borrow / single-use). Returns the stock-days with locates but no trade."""
+    try:
+        import tradedb
+        rows = tradedb.get(DATA_DIR, log).rows("SELECT day, sym, cost, kind FROM locates WHERE day>=? AND day<=?", (lo, hi))
+    except Exception:
+        rows = []
+    by = {}
+    for r in rows:
+        g = by.setdefault((r["day"], r["sym"]), {"cost": 0.0, "kinds": set()})
+        g["cost"] += r["cost"] or 0.0
+        g["kinds"].add("single-use" if "single" in str(r["kind"]).lower() else "pre-borrow")
+    seen = set()
+    for t in tr:
+        k = (t["d"], t["sym"])
+        g = by.get(k)
+        t["locType"] = " + ".join(sorted(g["kinds"])) if g else ""
+        if g and k not in seen:
+            seen.add(k)
+            if not any(x["loc"] for x in tr if (x["d"], x["sym"]) == k) and t["side"] == "Short":
+                t["loc"] = round(g["cost"], 2)
+                t["net"] = round(t["net"] - g["cost"], 2)
+    traded = {(t["d"], t["sym"]) for t in tr}
+    return [{"d": k[0], "sym": k[1], "cost": round(g["cost"], 2), "type": " + ".join(sorted(g["kinds"]))}
+            for k, g in sorted(by.items()) if k not in traded]
+
+
 def journal_data(rng="month", month="", today=None, data_dir=None, tz_fills=None):
     """3.11 Journal screen: totals, P&L calendar, equity, per strategy and the trades of today / week / month / all."""
     import csv as _csv
@@ -1373,6 +1406,7 @@ def journal_data(rng="month", month="", today=None, data_dir=None, tz_fills=None
             allt.sort(key=lambda x: (x["d"], x["tin"]))
             source = "tz"
     tr = [t for t in allt if str(start) <= t["d"] <= str(today)]
+    unused = _attach_locates(tr, str(start), str(today))  # 3.15: locate cost per stock-day (+ its type); bought, not used
     nets = [t["net"] for t in tr]
     wins, losses = [x for x in nets if x > 0], [x for x in nets if x <= 0]
     eq, cum, peak, mdd = [], 0.0, 0.0, 0.0
@@ -1425,6 +1459,8 @@ def journal_data(rng="month", month="", today=None, data_dir=None, tz_fills=None
             "avgLoss": round(sum(losses) / len(losses), 2) if losses else None,
             "payoff": round((sum(wins) / len(wins)) / abs(sum(losses) / len(losses)), 2) if wins and losses and sum(losses) else None,
             "mdd": round(mdd, 2), "loc": round(sum(t["loc"] for t in tr), 2),
+            "gross": round(sum(t["net"] + t["loc"] for t in tr), 2), "unused": round(sum(u["cost"] for u in unused), 2),
+            "unusedList": unused,
             "slip": round(sum(slip) / len(slip), 2) if slip else None, "slipN": len(slip),
             "days": len(days_traded), "best": round(max(dn), 2) if dn else None, "worst": round(min(dn), 2) if dn else None,
             "month": f"{first:%Y-%m}", "monthName": f"{first:%B %Y}", "cal": cal, "eq": eq,

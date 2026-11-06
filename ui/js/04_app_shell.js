@@ -106,6 +106,7 @@
     dcLoad();
     api('news_keys').then(k => { k = k || {}; if (document.activeElement !== $('n-id')) $('n-id').value = k.alpacaId || '';
       if (document.activeElement !== $('n-mail')) $('n-mail').value = k.secMail || '';
+      $('n-av').placeholder = k.hasAv ? 'a key is saved - leave empty to keep it' : 'free key: alphavantage.co - 25 lookups a day';
       $('n-sec').placeholder = k.hasSecret ? 'a secret is saved - leave empty to keep it' : 'paste the secret key'; });
     api('turso_keys').then(t => { t = t || {}; if (document.activeElement !== $('t-url')) $('t-url').value = t.url || ''; $('t-tok').placeholder = t.hasToken ? 'a token is saved - leave empty to keep it' : 'paste the auth token'; });
     cloudStatus();
@@ -128,6 +129,7 @@
   $('cloud').addEventListener('click', () => openSettings('env'));
   $('n-save').addEventListener('click', () => {               // 3.14: Alpaca + SEC (the News tab)
     $('n-st').textContent = 'Saving...';
+    api('av_save', $('n-av').value.trim()).then(a => { if (a && !a.ok) toast({kind: 'err', text: a.error}); else $('n-av').value = ''; });
     api('news_save', $('n-id').value.trim(), $('n-sec').value.trim(), $('n-mail').value.trim()).then(r => {
       if (r && r.ok) { $('n-sec').value = ''; $('n-st').textContent = 'Saved - the news feeds reconnect now (status in the News tab)'; toast({kind: 'info', text: 'News keys saved'}); }
       else $('n-st').textContent = (r && r.error) || 'Could not save';

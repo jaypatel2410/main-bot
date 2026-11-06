@@ -4,7 +4,7 @@ Part of main.py: main.py runs this file in its OWN namespace (same names, same s
 as when it was one file. Do not run it on its own - start main.py."""
 
 
-class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile):  # 3.12.1: the class is split over core/bot/*.py (code unchanged)
+class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _BotChecks):  # 3.12.1: the class is split over core/bot/*.py (code unchanged)
     def __init__(self, backend):
         self.be = backend
         self.loop = backend.loop
@@ -14,6 +14,20 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile):  #
         self.auto = bool(AUTO_TRADE_ON_START)
         self.tz = None
         self.acc = ""
+        self._watchdog_start()                           # 3.15: Discord if the main loop stalls; the PC kept awake
+        try:                                             # 3.15: Settings > Strategies (saved changes over the strategy files)
+            import strat_settings
+            strat_settings.apply_all()
+        except Exception:
+            log.exception("strategy settings")
+        self.tdb = self.missed = None                    # 3.15: trade database + the missed-trade log (Journal > Missed)
+        try:
+            import tradedb
+            import missed as _missed_mod
+            self.tdb = tradedb.get(DATA_DIR, log)
+            self.missed = _missed_mod.Missed(self.tdb, log)
+        except Exception:
+            log.exception("trade database")
         self.acc_type = ""
         self.acc_info = {}
         self.route = None
@@ -754,6 +768,11 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile):  #
         new = rows[n0:]
         bs.jr_fp = fp
         for i, (t, o, h, l, c, v) in enumerate(new):
+            if self.missed is not None:                  # 3.15: missed shorts follow the same candles
+                try:
+                    self.missed.short_bar(bs.sym, t, o, h, l, c)
+                except Exception:
+                    log.exception("missed %s", bs.sym)
             if bs.jr_virtual is not None:               # ALERT_ONLY: the would-be short meets this candle first
                 self._jr_virtual_bar(bs, t, o, h, l, c)
             for e in bs.jr.on_bar(t, o, h, l, c, v):
@@ -983,6 +1002,8 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile):  #
                    or ("the premarket long still holds it" if self.long_holds(bs.sym) else ""))
         else:                                            # alert only: what would still block the real short
             why = ("halted" if bs.halted else "") or ("the premarket long still holds it" if self.long_holds(bs.sym) else "")
+        if not why and SHORT_MIN_PRICE and s["close"] < SHORT_MIN_PRICE:     # 3.15: as the backtest (LABT 11-05)
+            why = f"signal price {_fp(s['close'])} under ${SHORT_MIN_PRICE:.2f}"
         if not why:
             ok, w = jr.entry_allowed(last, now)
             why = "" if ok else w
@@ -1040,6 +1061,8 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile):  #
                                  ("Risk", f"{_money(risk * max(qty, 0))}\n({risk / last * 100:.0f}% over entry)"
                                   + (f"\n{cap_note}" if cap_note else ""), True)] + lock_f)
         bs.jr_plan = None
+        if alert or why:                                 # 3.15: the missed-trade log follows it to its exit
+            self._miss_short(bs, s, name, last, qty, why or "alert only mode", wall, cfg)
         if alert and not why:                            # the would-be short: followed on the candles, no order
             jr.entry_filled(last, now)
             bs.jr_virtual = {"entry": last, "stop": s["stop"], "qty": max(qty, 0), "name": name, "t": wall, "locked": False}
@@ -1062,19 +1085,39 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile):  #
             return
         if st == "stop":
             jr.entry_cancelled()
+            self._miss_short(bs, s, name, last, qty, f"no locate - {bs.loc_note}", wall, cfg)
             self._notify(f"{bs.sym}: {name} skipped - no locate", f"Signal at {jr_hm(sg['t'])}. {bs.loc_note}", "warn",
                          bs=bs)
             return
         mono = time.monotonic()                          # 3.9.0: no locate within the cap yet - keep searching
         floor = s["close"] * (1 - LOCATE_GIVE_UP_DROP_PCT / 100.0)
         bs.hunt = {"mode": "entry", "sg": sg, "t0": mono, "cycle0": mono, "next": mono + LOCATE_RETRY_SEC, "tries": 1,
-                   "paused": 0, "floor": floor}
+                   "paused": 0, "floor": floor,
+                   "miss": self._miss_short(bs, s, name, last, qty, f"no locate within {MAX_LOCATE_PCT:g}% - {bs.loc_note}",
+                                            wall, cfg)}
         self._notify(f"\U0001F50D {bs.sym}: no locate within {MAX_LOCATE_PCT:g}% yet - still searching ({name})",
                      f"Asking TradeZero again every {LOCATE_RETRY_SEC:g} s, a {LOCATE_PAUSE_SEC / 60:g}-min break after every "
                      f"{LOCATE_HUNT_SEC / 60:g} min of searching. Shorts as soon as shares are located (never more than "
                      f"{MAX_LOCATE_PCT:g}% of the price a share), unless the price falls to {_fp(floor)} "
                      f"({LOCATE_GIVE_UP_DROP_PCT:g}% under the signal close {_fp(s['close'])}), reaches the stop "
                      f"{_fp(px_round(s['stop'], True))} or the entry window ends.", "warn", bs=bs)
+
+    def _miss_short(self, bs, s, name, last, qty, why, wall, cfg):
+        """3.15: a short signal not taken -> the missed-trade log (followed with the strategy's stop, lock and 15:55 cover).
+        Returns the record id (None = not recorded)."""
+        if self.missed is None:
+            return None
+        try:
+            eod = cfg.get("EOD_COVER_TIME") or JR.EOD_COVER_TIME
+            eod_min = _secs(eod) // 60 if eod else 955
+            k = "sq" if s.get("setup") == "squeeze" else "jr2" if str(s.get("setup")).startswith("jr2") else "jr"
+            if qty is None or qty < 1:
+                qty, _ = self._jr_size(last, s["stop"])
+            rec = self.missed.short(bs.sym, MODE_NAMES.get(k, k), name, last, s["stop"], max(qty, 0), why, wall, cfg, eod_min)
+            return rec["id"]
+        except Exception:
+            log.exception("missed short %s", bs.sym)
+            return None
 
     def _jr_settle(self, bs):
         """Keep the module in step with the bot: a SIGNAL with no order (and no locate search) behind it is cancelled, a
@@ -1198,6 +1241,8 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile):  #
         if st == "ok":
             bs.hunt = None
             if h["mode"] == "entry":
+                if self.missed is not None and h.get("miss"):          # 3.15: taken after all - not a missed trade
+                    self.missed.drop(h["miss"])
                 await self._jr_short_now(bs, h["sg"], n, lp, searched=True)
         elif st == "su_only":
             bs.hunt = None
@@ -1378,6 +1423,8 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile):  #
         weekday = now.weekday() < 5
         self._vault_feed_tick(now, mono, secs, weekday)          # 3.12.1: the daily vault feed (never blocks)
         self._ib_report_tick(now, secs, weekday)                 # 3.14: the IB portfolio to Discord (10:00, 12:00)
+        self._wd_beat = mono                                     # 3.15: the watchdog's heartbeat of the main loop
+        self._checks_tick(now, mono, secs, weekday)              # 3.15: morning check (start, 04:55, 09:00), stop check
         if self.day != now.date():
             self.day = now.date()
             self.trades_today = 0
@@ -1503,9 +1550,16 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile):  #
             if (secs >= K.rth_e + 300 and "sellback" not in self.flags and self.tz_ready()):
                 self.flags.add("sellback")
                 self.loop.create_task(self._sell_back_locates())
-            if secs >= K.rth_e + 330 and "summary" not in self.flags and secs < K.rth_e + 4 * 3600:
+            if secs >= K.rth_e + 300 and "summary" not in self.flags and secs < K.rth_e + 4 * 3600:
                 self.flags.add("summary")
-                self._summary()
+                try:                                     # 3.15: the 16:05 summary (equity picture, missed) + auto shutdown
+                    if getattr(self, "missed", None) is not None:
+                        self.missed.end_of_day()
+                    self._summary_315()
+                except Exception:
+                    log.exception("daily summary 3.15")
+                if AUTO_SHUTDOWN_SEC:
+                    self._shutdown_offer()
         if DISCORD_HEARTBEAT_MIN and mono >= self.next_heartbeat:
             self.next_heartbeat = mono + DISCORD_HEARTBEAT_MIN * 60
             if active and self.syms:
@@ -1616,6 +1670,14 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile):  #
     def _loc_record(self, sym, qty, px, kind, by):
         self.loc_rows.append({"t": self.now().strftime("%H:%M:%S"), "sym": sym, "qty": int(qty), "px": round(float(px), 6),
                               "total": round(float(px) * int(qty), 2), "type": kind, "by": by})
+        if getattr(self, "tdb", None) is not None:       # 3.15: kept for the Journal's locate column (all days, every PC)
+            try:
+                n = self.now()
+                self.tdb.put("locates", {"id": f"{sym}-{n:%Y%m%d%H%M%S}-{len(self.loc_rows)}", "day": str(n.date()),
+                                         "t": int(time.time()), "sym": sym, "qty": int(qty), "px": float(px),
+                                         "cost": round(float(px) * int(qty), 2), "kind": str(kind), "by": str(by)})
+            except Exception:
+                log.exception("locate save")
         self._loc_save()
         self._loc_push()
 
@@ -2256,7 +2318,10 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile):  #
                             if self.size_base else f"{ACCOUNT_PCT:g}% of equity (max ${MAX_POSITION_USD:,.0f})"),
                    "sizeBase": _f(self.size_base, 2), "locCap": MAX_LOCATE_PCT,
                    "dc": self.dc.status(), "log": list(self.logs)[-80:],
-                   "sig": dict(self.sig_today), "alerts": self._alerts_list(), "health": self._health()}
+                   "sig": dict(self.sig_today), "alerts": self._alerts_list(), "health": self._health(),
+                   "mcheck": getattr(self, "mcheck", None), "stopchk": getattr(self, "stopchk", []),
+                   "watchdog": self._watchdog_info(),
+                   "stopchkAt": getattr(self, "stopchk_at", "")}
         js = _dumps(payload)
         if js != self.last_push or force:
             self.last_push = js

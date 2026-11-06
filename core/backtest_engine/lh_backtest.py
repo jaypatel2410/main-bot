@@ -600,6 +600,33 @@ def _init(job):
         _CB.LONG_ENABLED, _CB.SHORT_ENABLED = True, True
     else:
         _CB.LONG_ENABLED, _CB.SHORT_ENABLED = False, True
+    _apply_overrides(job.get("overrides") or {})        # 3.15: Settings > Strategies - the same values as the live bot
+
+
+def _strat_settings():
+    try:
+        import strat_settings
+    except ImportError:
+        sys.path.insert(0, os.path.join(BASE, "core", "data"))
+        import strat_settings
+    return strat_settings
+
+
+def _apply_overrides(ov):
+    """The saved strategy settings in this worker: the short modules directly; the long's engine copy inside
+    lh_combined_backtester.py has its constants with a LONG_ prefix."""
+    if not ov:
+        return
+    try:
+        S = _strat_settings()
+        for k in ("jr2", "jr"):
+            if S.module(k) is not None:
+                S.apply(k, ov.get(k, {}))
+        for key, v in (ov.get("long") or {}).items():
+            if _CB is not None and hasattr(_CB, "LONG_" + key):
+                setattr(_CB, "LONG_" + key, v)
+    except Exception:
+        traceback.print_exc()
 
 
 def _hms(ts):
@@ -780,6 +807,10 @@ def _fingerprint(job):
             h.update(b"-")
     h.update(json.dumps({k: v for k, v in sorted(cfg.items()) if k not in _CACHE_SKIP}, sort_keys=True).encode())
     h.update(json.dumps([st["engine"], st["match"], os.path.basename(job["vault"] or ""), "jr-alone-1"]).encode())
+    try:                                                 # 3.15: changed strategy settings = a full re-run (they are the run)
+        h.update(json.dumps(_strat_settings().load(), sort_keys=True).encode())
+    except Exception:
+        pass
     return h.hexdigest()[:24]
 
 
@@ -968,7 +999,12 @@ def new_job(k, cfg, favorites=(), update=False):
     if os.path.isdir(out):                              # an update starts clean (the old result stays in Turso until the new one replaces it)
         _rmtree_hard(out)
     os.makedirs(out, exist_ok=True)
-    job = {"strat": st, "cfg": c, "vault": vault, "days": days, "created": rid, "note": "", "update": bool(update)}
+    try:
+        ov = _strat_settings().load()                    # 3.15: the strategy settings the live bot trades with
+    except Exception:
+        ov = {}
+    job = {"strat": st, "cfg": c, "vault": vault, "days": days, "created": rid, "note": "", "update": bool(update),
+           "overrides": ov}
     path = os.path.join(out, "job.json")
     _jsave(path, job)
     if not update:
