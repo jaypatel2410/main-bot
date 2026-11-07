@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LH Short Bot</title>
+<title>Kestrel</title>
 <style>
 __APP_CSS__
 </style>
@@ -11,7 +11,7 @@ __APP_CSS__
 <body>
 <div id="app">
 <header>
-  <div class="brand" title="LH Short Bot"><i></i></div>
+  <div class="brand" title="Kestrel"><i></i></div>
   <div class="search">
     <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
     <input id="sym" list="recent" placeholder="Search symbol" autocomplete="off" spellcheck="false" maxlength="12">
@@ -20,7 +20,8 @@ __APP_CSS__
   <div class="tfdd"><button id="tf-btn" title="Timeframe (keys 1-6)"><span id="tf-lab">1m</span><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
     <div id="tf-menu" class="hidden"><button data-tf="1">1 minute<kbd>1</kbd></button><button data-tf="2">2 minutes<kbd>2</kbd></button><button data-tf="5">5 minutes<kbd>3</kbd></button><button data-tf="15">15 minutes<kbd>4</kbd></button><button data-tf="30">30 minutes<kbd>5</kbd></button><button data-tf="D">1 day<kbd>6</kbd></button></div>
   </div>
-  <div class="quote"><span id="q-sym"></span><button id="q-fav" title="Add to favorites" aria-label="Add to favorites"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-9-8.6C1.6 8.3 3.6 5 6.8 5c2 0 3.4 1.1 4.2 2.4h2C13.8 6.1 15.2 5 17.2 5c3.2 0 5.2 3.3 3.8 6.4C19 15.6 12 20 12 20z"/></svg></button><span id="q-name"></span><span id="q-last"></span><span id="q-chg"></span><span id="q-ba" title="Bid x Ask, live from IB. In a halt IB keeps quoting - this is where the stock is indicated to open."><span id="q-bid">-</span><i>&times;</i><span id="q-ask">-</span></span></div>
+  <button id="ts-btn" class="tsb" title="Time &amp; Sales">T&amp;S</button>
+  <div class="quote"><span id="q-sym"></span><button id="q-fav" title="Add to favorites" aria-label="Add to favorites"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.4-9-8.6C1.6 8.3 3.6 5 6.8 5c2 0 3.4 1.1 4.2 2.4h2C13.8 6.1 15.2 5 17.2 5c3.2 0 5.2 3.3 3.8 6.4C19 15.6 12 20 12 20z"/></svg></button><button id="q-stop" class="hidden" title=""><svg viewBox="0 0 24 24"><path d="M7.9 2h8.2L22 7.9v8.2L16.1 22H7.9L2 16.1V7.9z"/><path d="M8 12h8"/></svg><span>STOP</span></button><span id="q-name"></span><span id="q-last"></span><span id="q-chg"></span><span id="q-ba" title="Bid x Ask, live from IB. In a halt IB keeps quoting - this is where the stock is indicated to open."><span id="q-bid">-</span><i>&times;</i><span id="q-ask">-</span></span></div>
   <div class="chips">
     <span hidden><span class="chip" id="c-up"><b>Gap</b><span>-</span></span><span class="chip" id="c-off"><b>Off HOD</b><span>-</span></span><span class="chip" id="c-hod"><b>HOD</b><span>-</span></span></span>
     <span class="chip" id="c-vwap"><b>VWAP</b><span>-</span></span>
@@ -64,11 +65,16 @@ __APP_CSS__
     <div id="banner" class="hidden"></div>
     <div id="toast" class="hidden"></div>
     <div id="loading" class="ov hidden"><div class="ov-box"><div class="spin"></div><div class="big" id="ld-sym"></div><div class="sub" id="ld-text"></div></div></div>
+    <aside id="tsp" hidden><div id="tssplit" title="Drag to resize - double-click to reset"></div>
+      <div class="tsh"><span class="t">Time &amp; Sales</span><span class="md" id="ts-md"><i></i><b>-</b></span></div>
+      <div class="tspd"><div class="cap">TAPE SPEED · 60 S</div><canvas id="ts-spd" height="34"></canvas></div>
+      <div class="tfl" id="ts-fl"><button data-f="0" class="on">All</button><button data-f="1000">1K+</button><button data-f="5000">5K+</button><button data-f="10000">10K+</button></div>
+      <div class="tth"><span>TIME</span><span>PRICE</span><span>SIZE</span><span>EX</span></div>
+      <div id="ts-rows"></div>
+    </aside>
     <div id="empty" class="ov"><div class="ov-box">
       <div class="big">Search a symbol</div>
-      <div class="sub">Type a ticker and press <kbd>Enter</kbd> - you can just start typing anywhere.<br>
-      The chart loads one week of 1-minute candles from IB Gateway and marks every short signal of the strategy.<br>
-      The bot trades only the tickers in the watchlist on the left (Auto-trade switch on).</div>
+      <div class="sub">Type a ticker and press <kbd>Enter</kbd></div>
     </div></div>
   </section>
   <div id="osplit" class="split" title="Drag to resize the chart / orders - double-click to reset"></div>
@@ -89,11 +95,11 @@ __APP_CSS__
       <span class="obadge o-ord" id="o-bp">Pending <b>0</b></span><span class="obadge o-ord" id="o-bf">Filled <b>0</b></span>
       <span class="m o-ord" id="o-meta">TradeZero not connected</span>
       <label class="tgl o-ord" title="Also list cancelled / rejected orders on the right"><input type="checkbox" id="o-all"><span class="sw"></span><span>Cancelled</span></label>
-      <span class="m o-loc" id="lc-meta">Your locates: no price cap. The bot's own: max <b id="lc-cap">5</b>% of the price a share.</span>
+      <span class="m o-loc" id="lc-meta">Bot max <b id="lc-cap">5</b>%</span>
       <button class="iconbtn" id="o-tog" title="Hide / show the orders panel">&#9660;</button></div>
     <div class="obody o-pos" id="pos-body">
       <div class="ocol">
-        <div class="och">Open <b id="p-no">0</b><span class="hint">Cover / Sell = close at market (click twice)</span></div>
+        <div class="och">Open <b id="p-no">0</b></div>
         <div class="ohd pgrid"><span>Symbol</span><span>Side</span><span class="r">Qty</span><span class="r">Avg</span><span class="r">Last</span><span class="r">Unrealized</span><span class="r">Stop</span><span class="r">In</span><span>Strategy</span><span></span></div>
         <div class="olist p-half" id="p-open"></div>
         <div class="och">Closed today <b id="p-nc">0</b><span class="hint" id="p-tot"></span></div>
@@ -103,7 +109,7 @@ __APP_CSS__
     </div>
     <div class="obody o-ord">
       <div class="ocol">
-        <div class="och">Pending <b id="o-np">0</b><span class="hint">click a price to change it</span></div>
+        <div class="och">Pending <b id="o-np">0</b></div>
         <div class="ohd ogp"><span>Time</span><span>Symbol</span><span>Side</span><span class="o-ty">Type</span><span class="r">Qty</span><span class="r">Price</span><span class="o-by">By</span><span></span></div>
         <div class="olist" id="o-pend"></div>
       </div>
@@ -134,7 +140,7 @@ __APP_CSS__
     </div>
     <div class="obody o-alr" id="al-body">
       <div class="ocol">
-        <div class="och">Price alerts <b id="al-no">0</b><span class="hint">Alt + click on the chart sets one there - it fires once (sound + Discord) while the stock is on the chart or the watchlist</span></div>
+        <div class="och">Price alerts <b id="al-no">0</b></div>
         <div class="alform"><input id="al-sym" placeholder="Symbol" maxlength="12" spellcheck="false" autocomplete="off"><input id="al-px" placeholder="Price" inputmode="decimal" autocomplete="off"><button class="sbtn pri" id="al-go">Add alert</button></div>
         <div class="ohd algrid"><span>Symbol</span><span>When</span><span class="r">Last</span><span>Set</span><span></span></div>
         <div class="olist" id="al-list"></div>
@@ -152,7 +158,7 @@ __APP_CSS__
       <div class="wl-add"><input id="wl-in" placeholder="Add ticker + Enter" maxlength="12" spellcheck="false" autocomplete="off">
         <button class="sbtn" id="wl-btn">Add</button></div>
       <div class="scan-head wgrid"><span>Symbol</span><span style="text-align:right">Last</span><span style="text-align:right">Gap</span><span>Bot status</span><span></span></div>
-      <div id="wl-list"><div class="empty-sig">Add the tickers the bot should watch.</div></div>
+      <div id="wl-list"><div class="empty-sig">Empty</div></div>
     </section>
     <div id="hsplit" class="split" title="Drag to resize the watchlist / scanner - double-click to reset"></div>
     <section id="scan-sec">
@@ -178,29 +184,26 @@ __APP_CSS__
     <span class="sm">Up at least</span><div class="seg2" id="sc-up"><button data-v="30">30%</button><button data-v="50">50%</button><button data-v="100">100%</button><button data-v="150">150%</button></div>
     <span class="sm">Price from</span><div class="seg2" id="sc-px"><button data-v="0.5">$0.50</button><button data-v="1">$1</button><button data-v="2">$2</button></div></div>
   <div class="scb">
-    <div class="sct"><div class="scgrid sch2"><span>#</span><span>Symbol</span><span class="r">Last</span><span class="r">Change</span><span class="r">Float</span><span class="r">Volume</span><span class="r">$ Volume</span><span class="r">Vol / avg</span><span class="r">From high</span><span>Bot</span><span></span></div>
-      <div class="sclist" id="sc-list"></div></div>
-    <aside class="scd" id="sc-det"></aside>
+    <div class="sccards" id="sc-cards"></div>
   </div>
 </section>
 <section class="screen" id="scr-journal" aria-label="Journal">
   <div class="sch"><span class="st">Journal</span><div class="seg2" id="jr-view"><button data-v="trades" class="on">Trades</button><button data-v="missed">Missed</button><button data-v="heat">Heat map</button></div>
     <div class="seg2" id="jr-rng"><button data-v="today">Today</button><button data-v="week">Week</button><button data-v="month">Month</button><button data-v="all">All</button></div>
-    <span class="sm" id="j-meta"></span><div class="spacer"></div><span class="sm" id="j-src">From the bot's trade journals - real fills</span><button class="sbtn" id="jr-csv">Export CSV</button></div>
+    <span class="sm" id="j-meta"></span><div class="spacer"></div><span class="sm" id="j-src"></span><button class="sbtn" id="jr-csv">Export CSV</button></div>
   <div class="jbody" id="jv-trades">
     <div class="jkpi" id="j-kpi"></div>
-    <div class="jrow"><div class="jcard" id="j-cal"></div><div class="jcard"><div class="jt">Equity <span class="sm">cumulative P&amp;L, trade by trade</span></div><svg id="j-eq" viewBox="0 0 800 240"></svg></div></div>
-    <div class="jrow"><div class="jcard" id="j-strat"></div><div class="jcard"><div class="jt">Trades <span class="sm">newest first - click a symbol for its chart</span></div><div class="jtl" id="j-trades"></div></div></div>
+    <div class="jrow"><div class="jcard" id="j-cal"></div><div class="jcard"><div class="jt">Equity</div><svg id="j-eq" viewBox="0 0 800 240"></svg></div></div>
+    <div class="jrow"><div class="jcard" id="j-strat"></div><div class="jcard"><div class="jt">Trades</div><div class="jtl" id="j-trades"></div></div></div>
   </div>
   <div class="jbody hidden" id="jv-missed">
     <div class="jkpi mskpi" id="ms-kpi"></div>
     <div class="jcard msreasons"><span class="mh" style="padding:0;margin-right:6px">BY REASON</span><span id="ms-cats"></span></div>
     <div class="jcard" style="padding:0;overflow:hidden"><div class="msrow2 h"><span>Time</span><span>Ticker</span><span>Strategy</span><span class="r">Signal</span><span>Reason</span>
       <span class="r">Would-have exit</span><span>Exit</span><span class="r">Move</span><span class="r">Would-have P&amp;L</span><span></span></div><div id="ms-list"></div></div>
-    <div class="sm" style="white-space:normal">Each missed signal is followed with the strategy's own exit rules (stop, lock, 15:55 cover; the long: its stop, half, trail and time stop); the result fills in when that exit happens. Sizing = the live sizing of that moment, shorts after a 3% locate.</div>
   </div>
   <div class="jbody hidden" id="jv-heat">
-    <div class="jcard"><div class="jt"><span>Net P&amp;L by weekday and hour <span class="sm">after locates - cell = P&amp;L and trades</span></span>
+    <div class="jcard"><div class="jt"><span>Net P&amp;L by weekday and hour</span>
       <div class="seg2" id="hm-strat"></div></div><div class="hm" id="hm-grid"></div></div>
   </div>
 </section>
@@ -227,7 +230,6 @@ __APP_CSS__
 </div>
           <button class="sbtn pri" id="bt-go" style="height:36px;padding:0 20px;font-size:14px">Run once</button>
           <button class="sbtn danger hidden" id="bt-stop" style="height:36px">Stop</button></div>
-        <div class="sm" style="white-space:normal;line-height:1.5">One run per strategy. After this first run, every time you open the strategy it runs only the ticker-days added to the vault since, keeps everything it already has, and updates the P&amp;L and every number at once.</div>
         <button class="btfold" id="bt-fold" aria-expanded="false"><span class="btcar">&#9656;</span> Run settings <span class="sm" id="bt-foldsum"></span></button>
         <div class="btgrid3 hidden" id="bt-setc">
           <div class="btcard"><div class="bth">Days</div>
@@ -266,7 +268,6 @@ __APP_CSS__
             <div class="btverd" id="bt-verd"><button data-vd="Good trade">Good trade</button><button data-vd="Bad entry">Bad entry</button><button data-vd="Would skip">Would skip</button><button data-vd="Better entry higher">Better entry higher</button></div>
             <div class="mh" style="padding:4px 0 0">NOTES ON THIS CHART</div>
             <div id="bt-notes" class="cn-list"></div>
-            <div class="sm cn-hint">Right-click the chart to add a note. The live chart shows the same notes.</div>
           </aside>
         </div>
       </div>
@@ -290,9 +291,9 @@ __APP_CSS__
       <div class="ntchart" id="nt-cbox"><div id="nt-chart"></div><div class="sm ntcmsg" id="nt-cmsg"></div></div>
       <div class="ntgrip" id="nt-grip" title="Drag to make the chart taller or shorter - double-click to reset"></div>
       <div class="ntadd"><textarea id="nt-new" placeholder="Write a note for this day... (click the chart first to pin it to a candle and price)"></textarea>
-        <div class="ntaddb"><span class="sm" id="nt-pin">Not pinned - click the chart to pin it to a candle and price</span><div class="spacer"></div>
+        <div class="ntaddb"><span class="sm" id="nt-pin">Not pinned</span><div class="spacer"></div>
           <button class="sbtn" id="nt-unpin" hidden>Unpin</button><button class="sbtn pri" id="nt-add">Add note</button></div></div>
-      <div class="mh" style="padding:2px 0 0">NOTES ON THIS CHART <span class="sm" style="letter-spacing:0;text-transform:none">- right click any chart to add one</span></div>
+      <div class="mh" style="padding:2px 0 0">NOTES ON THIS CHART</div>
       <div id="nt-notes" class="ntnotes"></div>
     </div>
   </div>
@@ -303,12 +304,12 @@ __APP_CSS__
     <button class="sbtn" id="ib-ref">Refresh</button></div>
   <div class="ibb">
     <div class="iblist"><div class="ibrow h"><span>Symbol</span><span>Shares</span><span>Avg cost</span><span>Last</span><span>Market value</span><span>Today</span><span>Unrealized</span></div><div id="ib-list"></div></div>
-    <div class="ibdet"><div class="ntdh"><b id="ib-sym">-</b><span class="sm">daily - 2 years - prices in the stock&#39;s own currency</span><div class="spacer"></div><button class="sbtn" id="ib-main">Open on main chart</button></div>
-      <div class="ntchart" style="flex:1"><div id="ib-chart"></div><div class="sm ntcmsg" id="ib-cmsg">Click a position for its daily chart.</div></div></div>
+    <div class="ibdet"><div class="ntdh"><b id="ib-sym">-</b><span class="sm">Daily</span><div class="spacer"></div><button class="sbtn" id="ib-main">Open on main chart</button></div>
+      <div class="ntchart" style="flex:1"><div id="ib-chart"></div><div class="sm ntcmsg" id="ib-cmsg"></div></div></div>
   </div>
 </section>
 <section class="screen" id="scr-fav" aria-label="Favorites">
-  <div class="sch"><span class="st">Favorites</span><span class="sm" id="fv-meta">Tickers you keep - multi-day runners and more</span><div class="spacer"></div>
+  <div class="sch"><span class="st">Favorites</span><span class="sm" id="fv-meta"></span><div class="spacer"></div>
     <div class="fvadd"><input id="fv-in" placeholder="Ticker" autocomplete="off" spellcheck="false"><button class="sbtn pri" id="fv-add">Add</button></div></div>
   <div class="fvhead fvgrid"><span>#</span><span>Symbol</span><span style="text-align:right">Last</span><span>Added</span><span></span><span></span></div>
   <div class="fvb" id="fv-list"></div>
@@ -318,6 +319,7 @@ __APP_CSS__
     <div class="snh">Settings</div>
     <button data-sec="trading" class="on"><svg class="sni" viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 5-6"/></svg>Trading</button>
     <button data-sec="strat"><svg class="sni" viewBox="0 0 24 24"><path d="M4 6h10M4 12h6M4 18h12"/><circle cx="17" cy="6" r="2"/><circle cx="13" cy="12" r="2"/><circle cx="19" cy="18" r="2"/></svg>Strategies</button>
+    <button data-sec="force"><svg class="sni" viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/></svg>In force</button>
     <button data-sec="sig"><svg class="sni" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>Signals <span class="cnt" id="s-sig"></span></button>
     <button data-sec="skip"><svg class="sni" viewBox="0 0 24 24"><path d="M6 5v14l9-7z"/><path d="M18 5v14"/></svg>Skipped signals <span class="cnt" id="s-skip"></span></button>
     <button data-sec="log"><svg class="sni" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>Bot log</button>
@@ -329,6 +331,7 @@ __APP_CSS__
   <div class="setbody">
     <section class="setsec on" id="set-trading"><div class="seth">Trading</div></section>
     <section class="setsec" id="set-strat"><div class="seth">Strategies</div><div id="ss-body"></div></section>
+    <section class="setsec" id="set-force"><div class="seth">In force</div><div id="sf-body"></div></section>
     <section class="setsec" id="set-sig"><div class="seth">Signals</div></section>
     <section class="setsec" id="set-skip"><div class="seth">Skipped signals</div></section>
     <section class="setsec" id="set-log"><div class="seth">Bot log</div></section>
@@ -345,11 +348,10 @@ __APP_CSS__
   </div>
 </section>
 <section class="screen" id="scr-keys" aria-label="Hotkeys">
-  <div class="sch"><span class="st">Hotkeys</span><span class="sm">They act on the symbol of the open chart.</span><div class="spacer"></div>
+  <div class="sch"><span class="st">Hotkeys</span><div class="spacer"></div>
     <label class="tgl" title="Cover / sell / cancel / flatten keys and Ctrl + click stops"><input type="checkbox" id="hk-on"><span class="sw"></span><span>Order hotkeys</span></label>
     <button class="sbtn" id="hk-reset">Reset to default</button></div>
   <div class="hkb" id="hk-list"></div>
-  <div class="hkf">Order keys (cover, sell, cancel, flatten, Ctrl + click stop) work only while <b>Order hotkeys</b> is on - it is off until you switch it on. They act at once (F9 asks twice) and do exactly what the buttons do. Click <b>Change</b>, then press the new key (Esc = keep the old one). Live trading stays locked unless ALLOW_LIVE_TRADING = True.</div>
 </section>
 </div>
 </div>
@@ -429,7 +431,7 @@ __APP_CSS__
   <button class="mi" data-panel="sig">Signals<span class="cnt" id="m-sig"></span><span class="arr">&rsaquo;</span></button>
   <button class="mi" data-panel="log">Bot log<span class="arr">&rsaquo;</span></button>
   <button class="mi" data-panel="skip">Skipped signals<span class="cnt" id="m-skip"></span><span class="arr">&rsaquo;</span></button>
-  <button class="mi" data-panel="keys">Keys and Discord (.env)<span class="arr">&rsaquo;</span></button>
+  <button class="mi" data-panel="keys">Keys and Discord<span class="arr">&rsaquo;</span></button>
   <button class="mi" data-panel="hotkeys">Hotkeys<span class="arr">&rsaquo;</span></button>
   <div class="md"></div><div class="mh">CONNECTION</div>
   <div class="mconn">

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LH Short Bot 3.15 - part of the Bot class (runs in main.py's namespace like the other core/bot parts).
+"""Kestrel 3.15 - part of the Bot class (runs in main.py's namespace like the other core/bot parts).
 
     Morning check   at the start, 04:55 (before the premarket long) and 09:00 (before the shorts): IB Gateway and its data
                     farms, TradeZero (keys, paper / live), buying power vs the next trade, Discord, the vault feed, the PC

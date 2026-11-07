@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LH Short Bot - Bot: the stop guard, user stops, halts and the reopen logic.
+"""Kestrel - Bot: the stop guard, user stops, halts and the reopen logic.
 Part of the Bot class (core/bot/bot_core.py): main.py runs this file in its own namespace. Code moved here unchanged."""
 
 class _BotStopsHalts:
@@ -208,6 +208,7 @@ class _BotStopsHalts:
                  "mono": time.monotonic(), "resumed": None, "n": len(bs.halts) + 1}
             bs.halts.append(h)
         bs.halt, bs.halted = h, True
+        bs.halt_flag_clear = False
         try:
             self.loop.create_task(self._halt_watch(bs, h))
         except RuntimeError:

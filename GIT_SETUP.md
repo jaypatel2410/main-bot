@@ -24,7 +24,7 @@ git status
 ```
 Check the `git status` list: `.env` must NOT be in it (only `.env.example`). Then:
 ```
-git commit -m "LH Short Bot 3.12.1 - folder layout"
+git commit -m "Kestrel 3.12.1 - folder layout"
 git remote add origin https://github.com/<your-github-name>/lh-bot.git
 git push -u origin main
 ```

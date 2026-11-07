@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LH Short Bot - the parked v16 bounce-zone + vacuum short (strategy parameters + engine).
+"""Kestrel - the parked v16 bounce-zone + vacuum short (strategy parameters + engine).
 Part of main.py: main.py runs this file in its OWN namespace (same names, same settings), so the code works exactly
 as when it was one file. Do not run it on its own - start main.py."""
 # =============================================================================

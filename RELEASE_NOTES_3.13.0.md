@@ -1,4 +1,4 @@
-# LH Short Bot 3.13.0 - Jay-read 2 (2026-11-01)
+# Kestrel 3.13.0 - Jay-read 2 (2026-11-01)
 
 **Paper-trade first.** Live trading stays locked (`ALLOW_LIVE_TRADING = False` in `core\settings.py`; the `.env` file cannot switch it on).
 

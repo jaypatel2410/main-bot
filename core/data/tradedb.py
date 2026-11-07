@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LH Short Bot 3.15 - the trade database: missed signals, health checks, stop checks, daily summaries, locates, events.
+"""Kestrel 3.15 - the trade database: missed signals, health checks, stop checks, daily summaries, locates, events.
 
 The working store is a SQLite file on this PC (trade_db.sqlite in the app data folder) - it works with no keys and the
 bot never waits for the network. When TURSO_DATABASE_URL / TURSO_AUTH_TOKEN are in .env, a background thread copies

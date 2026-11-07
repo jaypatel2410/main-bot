@@ -63,12 +63,6 @@ function createApp(){
     while (lo <= hi) { const m = (lo + hi) >> 1; if (shown[m][0] <= t) { r = m; lo = m + 1; } else hi = m - 1; }
     return r;
   }
-  // 3.13.0: Jay-read 2's rules for the signal panel
-  const jr2Text = j => !j ? '' : `Jay-read 2 v${j.ver} (${j.alertOnly ? 'ALERT ONLY' : 'trading'}): up ${j.up}%+ (high of day), $${j.dollar}M+ traded, ` +
-    `regular-hours high ${j.age0}-${j.age1} min old, flush ${j.crack0}-${j.crack1}% under it (spikers - open under +${j.split}% - must reach VWAP), ` +
-    `the first bounce takes back ${j.r0}-${j.r1}% with no new high; short the red / wicked candle within ${j.fresh} candles of the bounce high ` +
-    `(close within ${j.under}% of it, ${j.vwap}%+ over VWAP) at the next open, ${j.start}-${j.end}, one short per high. Stop = high of day +${j.stop}%; ` +
-    `after a ${j.lockAfter}% fade the stop moves to ${j.lockText}; cover ${j.eod || 'by you'}.<br>`;
   function tradeMarks(){
     if (tf === 'D' || !shown.length) return [];
     const out = [], real = botFills.filter(f => f.sym === sym), realDays = new Set(real.map(f => dayOf(f.t)));
@@ -376,7 +370,7 @@ function createApp(){
     const list = $('sig-list');
     if (!sig) { list.innerHTML = ''; return; }
     if (!trades.length) {
-      list.innerHTML = info.short === 'jay_read' && info.jr ? `<div class="empty-sig">No short signal in the loaded week.<br>${jr2Text(info.jr.jr2)}${info.jr.v12 === false ? '(Jay-read v1.2 is Off.) ' : ''}Jay-read short v${info.jr.ver}: a stock up ${info.jr.up}%+ with $${info.jr.dollar}M+ traded, its regular-hours high ${info.jr.age}+ min old, cracked ${info.jr.crack}%+ (momentum broken). Entry A: the bounce under the nearest overhead high rolls over near its top (red candle, ${info.jr.vwapA}%+ over VWAP). Entry B (from ${info.jr.levelStart}): the bounce comes up into a lower high it already failed at and is rejected there (${info.jr.vwapB}%+ over VWAP). Signals ${info.jr.start}-${info.jr.end}; stop = the regular-hours high +${info.jr.stop}%; after a ${info.jr.lockAfter}% fade the stop moves to ${info.jr.lockText}; done for the day after a stop. Live: ${info.jr.alertOnly ? 'ALERT ONLY - signals to Discord, no orders' : 'the bot places the shorts'}.${info.jr.sq ? `<br>Max squeeze short: a stock up ${info.jr.sq.up}%+ squeezes ${info.jr.sq.squeeze}%+ over the last swing high it broke (a high with a ${info.jr.sq.swing}% pullback - where the average short went in); short the first red candle within ${info.jr.sq.near}% of the top (${info.jr.sq.start}-${info.jr.sq.end}); stop = the top +${info.jr.sq.stop}%, no lock. Live: ${info.jr.sq.alertOnly ? 'ALERT ONLY' : 'the bot places the shorts'}. One short per stock at a time; a stop-out ends the stock for the day.` : ''}<br>Chart: the backtest view (cover ${info.jr.eodChart}). ${info.jr.eod ? 'The bot covers at ' + info.jr.eod : 'No automatic cover - alerts at 15:50'}.</div>` : `<div class="empty-sig">No short signals in the loaded week.<br>Bounce-zone short: a stock that gapped up ${info.minGap || 50}%+ at the open, made its top, dipped ${info.dip || 20}%+ off it, and bounces back into the ${info.zoneNear || 10}-${info.zoneFar || 12}% zone under the top while that zone is still ${info.vwapMin || 15}%+ above VWAP. The short limit fills between ${info.entryStart || '09:45'} and ${info.lastEntry || '11:00'}${info.minVol ? ', once ' + fmtV(info.minVol) + ' shares have traded today' : ''}. Stop ${info.stopTop || 3}% above the top.${info.vac && info.vac.on ? `<br>Vacuum short: a high ${info.vac.stretch}%+ above VWAP on dying volume, then a candle closing ${info.vac.pull}% under that peak (until ${info.vac.last}), stop ${info.vac.stop}% above the peak.` : ''}<br>The bot does not cover at the close - it alerts you at 15:50.</div>`;
+      list.innerHTML = '<div class="empty-sig">No short signal in the loaded week.</div>';
     } else {
       let html = '', cur = null;
       for (const t of trades) {
@@ -396,8 +390,7 @@ function createApp(){
     const w = sig.week, d = sig.today;
     const closedToday = d.trades - (d.open || 0);
     $('p-stats').innerHTML = `${sig.live ? 'Today' : 'Latest day'}: <b>${plural(d.trades, 'trade')}</b>${closedToday ? ' - <b>' + fmtR(d.R) + '</b>' : ''}${d.open ? ' - <b style="color:var(--amber)">' + d.open + ' open</b>' : ''}` +
-      (d.jr && info.jr ? `<span class="daytype ${d.gapOk ? '' : 'dump'}" title="High of day vs prior close - the Jay-read short needs ${info.jr.up}%+ and $${info.jr.dollar}M traded">${d.up == null ? 'Up: -' : (d.gapOk ? 'Up +' : 'Up only +') + d.up.toFixed(0) + '%' + (d.dollar != null ? ', $' + (d.dollar / 1e6).toFixed(0) + 'M' : '') + (d.gapOk ? ' - Jay-read stock' : ' - needs ' + info.jr.up + '%')}</span><br>`
-      : `<span class="daytype ${d.gapOk ? '' : 'dump'}" title="Gap at the 09:30 open vs prior close - the bounce-zone short needs ${info.minGap || 50}%+">${d.gap == null ? 'Gap: before the open' : (d.gapOk ? 'Gap ' : 'Gap only ') + (d.gap >= 0 ? '+' : '') + d.gap.toFixed(0) + '%' + (d.gapOk ? ' - setup day' : ' - no setup')}</span><br>`) +
+      (d.jr && info.jr ? `<span class="daytype ${d.gapOk ? '' : 'dump'}" title="High of day vs prior close - the Jay-read short needs ${info.jr.up}%+ and $${info.jr.dollar}M traded">${d.up == null ? 'Up: -' : (d.gapOk ? 'Up +' : 'Up only +') + d.up.toFixed(0) + '%' + (d.dollar != null ? ', $' + (d.dollar / 1e6).toFixed(0) + 'M' : '') + ''}</span><br>` : '') +
       `Loaded week: <b>${plural(w.trades, 'trade')}</b> - ${w.wins}W / ${w.losses}L - <b>${fmtR(w.R) || '0.00R'}</b>`;
     const sk = sig.skips || [];
     $('skip-sum').textContent = `Skipped signals ${sig.live ? 'today' : 'on the latest day'} (${sk.length})`;

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-LH SHORT BOT 3.12.0  -  Jay-read + max squeeze short auto-trader + premarket long
+KESTREL 3.12.0  -  Jay-read 2 + Jay-read short auto-trader + premarket long
+  - 2026-11-06: the v16 bounce-zone short and the max squeeze short are OFF the live path (removed). The v16 file is
+    parked in backtest\v16_parked; max_squeeze_short.py stays only because Jay-read 2 builds its book on it.
             (IB Gateway data, TradeZero orders, Discord notifications)
 ==================================================================================
 3.12.1 (2026-10-30): SETTINGS SCREEN + JOURNAL FROM TRADEZERO
@@ -20,8 +22,8 @@ LH SHORT BOT 3.12.0  -  Jay-read + max squeeze short auto-trader + premarket lon
     get their own live quote while they wait.
 3.12.0 (2026-10-29): HALTS, THE STOP AT TRADEZERO, TRADEZERO AS THE TRUTH, 09:00 SIZING, SPLIT INTO FILES (the AZTR fixes)
   - Files: main.py (this file: settings, the bot, the window), IB.py (market data), Tradezero.py (orders, positions,
-    locates), lh_discord.py (Discord), + jay_read_short.py, max_squeeze_short.py, lh_long_premarket.py. Start main.py
-    (lh_short_bot_app.py still works: it starts main.py).
+    locates), kestrel_discord.py (Discord), + jay_read_short.py, max_squeeze_short.py, lh_long_premarket.py. Start main.py
+    (kestrel_app.py still works: it starts main.py).
   - The stop goes to TradeZero the moment the short fills. A rejected / dropped stop is NEVER a reason to cover: the
     short is guarded - placed again every STOP_RETRY_SEC, "STOP NOT PLACED" pinged every minute until it is there,
     covered at market only if the price trades over the stop.
@@ -112,7 +114,7 @@ LH SHORT BOT 3.12.0  -  Jay-read + max squeeze short auto-trader + premarket lon
   JR_EOD_COVER_TIME: "15:55" = the bot covers Jay-read shorts at the 15:55 open (the backtest rule); None = off (the
   15:50 / 15:59 alerts, you close them). The auto short-scanner puts stocks up 100%+ on the watchlist (SHORT_SCANNER).
 
-PARKED IN 3.7.0 (kept in this file, switch back with SHORT_STRATEGY = "v16" = exactly the 3.6.4 behaviour):
+PARKED IN 3.7.0, REMOVED FROM THE LIVE PATH 2026-11-06 (history only - SHORT_STRATEGY no longer exists):
   S-01  v16 bounce-zone + vacuum short - the embedded Backtest engine, the bounce-zone limit, the vacuum trap, the
         pre-locate at VWAP +20%, every v16 setting below. Items 1-4 of the 3.6.4 description below describe it.
   Not in the app (research, see the project's PATTERN_REGISTRY): backside short, HCB, Patterns A / B, W20.
@@ -195,7 +197,7 @@ Needs:   pip install pywebview ib_async pandas numpy tzdata matplotlib
 # =============================================================================
 # 3.12.1: the code is organised in folders - core/ (settings, bot/, data/, broker/, notify/, window/, backtest_engine/)
 # and ui/ (the app window: app.html, app.css, js/*.js). The core/*.py parts below run in THIS file's namespace, in this order, so every
-# name works exactly as when main.py was one file. IB.py, Tradezero.py, lh_discord.py and lh_backtest.py are normal
+# name works exactly as when main.py was one file. IB.py, Tradezero.py, kestrel_discord.py and kestrel_backtest.py are normal
 # modules in core/.
 # =============================================================================
 import os as _os
@@ -286,7 +288,7 @@ except Exception as _lp_exc:             # missing / broken: the short bot runs 
 try:                                     # v3.7: the Jay-read short (jay_read_short.py next to this file, used unchanged)
     import jay_read_short as JR
     JR_IMPORT_ERROR = ""
-except Exception as _jr_exc:             # missing / broken: no Jay-read shorts (reported at start-up); "v16" still works
+except Exception as _jr_exc:             # missing / broken: no Jay-read shorts (reported at start-up)
     JR = None
     JR_IMPORT_ERROR = f"{_jr_exc.__class__.__name__}: {_jr_exc}"
 
@@ -300,19 +302,6 @@ except Exception as _jr2_exc:            # missing / broken: no Jay-read 2 short
     JR2 = None
     JR2_IMPORT_ERROR = f"{_jr2_exc.__class__.__name__}: {_jr2_exc}"
 
-SQ, SQ_IMPORT_ERROR = None, "not used live (SQUEEZE_SHORT = False)"   # 3.12.2: backtest only
-try:                                     # 3.9.0: the max squeeze short (max_squeeze_short.py next to this file)
-    if SQUEEZE_SHORT:
-        import max_squeeze_short as SQ
-        SQ_IMPORT_ERROR = ""
-except Exception as _sq_exc:             # missing / broken: the Jay-read short runs alone (reported at start-up)
-    SQ = None
-    SQ_IMPORT_ERROR = f"{_sq_exc.__class__.__name__}: {_sq_exc}"
-
-# 3.12: the code lives in separate files next to this one (main.py binds itself first: they read the settings
-# below as app.NAME). IB.py = market data (IB Gateway), Tradezero.py = orders / positions / locates,
-# lh_discord.py = Discord messages + chart pictures. jay_read_short.py, max_squeeze_short.py, lh_long_premarket.py =
-# the strategies.
 
 
 class _HostRef:
@@ -341,9 +330,9 @@ _tz_mod.app = HOST
 from Tradezero import (  # noqa: E402,F401
     DONE_STATES, LOCATE_TYPES, OPEN_STATES, TZClient, TZError, _NetFail, _fnum, _olimit, _oside, _ostop, _otype,
     _tick_px, _tz_time, px_round, tz_load_keys, tz_save_keys)
-import lh_discord as _dc_mod  # noqa: E402
+import kestrel_discord as _dc_mod  # noqa: E402
 _dc_mod.app = HOST
-from lh_discord import (  # noqa: E402,F401
+from kestrel_discord import (  # noqa: E402,F401
     COLORS, Discord, FLOW_BG, FLOW_DIM, FLOW_FG, FLOW_PRICE, FLOW_SETUP, FLOW_SHORT, FLOW_STOP, FLOW_TGT,
     FLOW_VWAP, _EMOJI_RE, _flow_pivots, _fpx, _queue, _render_flow, _spread_labels, _uuid, chart_rows_today,
     dc_style, discord_load, discord_save, discord_url_ok, render_chart_png, render_flow_png)
@@ -353,7 +342,6 @@ from IB import (  # noqa: E402,F401
     Backend, BarCache, CACHE_MAX_DAYS, CACHE_SCHEMA, SESSION_START_SEC, SymState, _wd, candle_tuples,
     chart_to_utc, ib_bar, pick_details, prior_closes, prior_for, rows_from_tuples)
 
-_part("strategy_v16.py")
 _part("data/helpers.py")
 for _bp in ("status.py", "orders.py", "stops_halts.py", "sizing.py", "reconcile.py", "checks.py", "bot_core.py"):
     _part("bot/" + _bp)                          # the Bot class: 5 parts (mixins) + bot_core.py (class Bot)
@@ -362,7 +350,7 @@ _part("window/jsapi.py")
 # -----------------------------------------------------------------------------
 # Page (ui/app.html + ui/app.css + ui/app.js)
 # -----------------------------------------------------------------------------
-_JS_FILES = ('01_boot.js', '02_chart.js', '03_trading_orders.js', '04_app_shell.js', '05_alerts_screens.js', '06_colors.js', '07_favorites.js', '08_backtest.js', '09_chart_alerts_settings.js', '09b_chart_notes.js', '10_scanner.js', '11_journal.js', '12_bot_center.js', '12b_notes_ib.js', '13_hotkeys.js')   # ui/js/*, joined in this order into one script
+_JS_FILES = ('01_boot.js', '02_chart.js', '03_trading_orders.js', '04_app_shell.js', '05_alerts_screens.js', '06_colors.js', '07_favorites.js', '08_backtest.js', '09_chart_alerts_settings.js', '09b_chart_notes.js', '10_scanner.js', '11_journal.js', '12_bot_center.js', '12b_notes_ib.js', '12c_tape.js', '13_hotkeys.js')   # ui/js/*, joined in this order into one script
 HTML = _ui("app.html").replace("__APP_CSS__", _ui("app.css").rstrip("\n")).replace(
     "__APP_JS__", "".join(_ui("js/" + _f) for _f in _JS_FILES).rstrip("\n"))
 
@@ -385,7 +373,7 @@ def build_html(lib_js):
 # Main
 # -----------------------------------------------------------------------------
 def main():
-    global STRAT, STRATEGY_SOURCE
+    global STRATEGY_SOURCE
     import multiprocessing as _mp
     _mp.freeze_support()                         # 3.13: the Backtest tab runs in its own process (also in the .exe)
     if sys.stdout is None:                      # windowed .exe has no console
@@ -401,9 +389,7 @@ def main():
                  f" (copied in from the old key files: {', '.join(moved)})" if moved else "")
     except Exception:
         log.exception(".env")
-    STRAT, STRATEGY_SOURCE = _select_strategy()
-    if jr_mode():
-        STRATEGY_SOURCE = jr_source()
+    STRATEGY_SOURCE = jr_source()
     _init_constants()
     log.info("%s %s starting - strategies: %s (%s) - IB %s:%s", APP_NAME, APP_VERSION, strategy_label(), STRATEGY_SOURCE,
              IB_HOST, IB_PORT)

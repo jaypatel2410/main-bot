@@ -28,7 +28,7 @@
     $('al-list').innerHTML = alerts.length ? alerts.slice().reverse().map(a => `<div class="orow algrid"><span class="o-s" data-os="${esc(a.sym)}">${esc(a.sym)}</span>` +
       `<span>${a.dir === 'up' ? 'rises to' : 'falls to'} <b>${fmtPx(a.px)}</b></span><span class="r">${fmtPx(lastOf(a.sym))}</span><span class="o-t">${esc(a.t)}</span>` +
       `<button class="al-x" data-ax="${esc(a.id)}" title="Remove">&times;</button></div>`).join('')
-      : '<div class="oempty">No price alert. Right click (or Alt + click) on the chart, or type a symbol and a price above.</div>';
+      : '<div class="oempty">No price alerts</div>';
   }
   function alertAdd(s, p){
     api('alert_add', s, p, s === sym ? lastPx : null).then(res => {

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LH Short Bot - the daily vault feed (3.12.1, 2026-10-31).
+"""Kestrel - the daily vault feed (3.12.1, 2026-10-31).
 
 The bot keeps its OWN list of the ticker-days it looked at (a separate memory: vault_queue.json in the app data folder;
 it never touches the watchlist, favorites or anything else):

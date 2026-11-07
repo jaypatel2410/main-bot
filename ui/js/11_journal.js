@@ -10,7 +10,7 @@
     const d = jData; if (!d) return;
     document.querySelectorAll('#jr-rng button').forEach(b => b.classList.toggle('on', b.dataset.v === jRange));
     $('j-meta').textContent = `${d.from === d.to ? d.to : (d.range === 'all' ? 'all days' : d.from + ' to ' + d.to)} - ${plural(d.days, 'day')} with trades`;
-    $('j-src').textContent = d.source === 'tz' ? 'From TradeZero - real fills (strategy labels from the bot)' : "From the bot's trade journals (TradeZero returned no history)";
+    $('j-src').textContent = d.source === 'tz' ? 'TradeZero fills' : 'Bot journal';
     const bt = info.btref || {}, btw = 'backtest 63% (584 days, all strategies)';
     const KP = [['Net P&L', `<b class="${jc(d.net)}">${jm(d.net)}</b>`, d.best != null ? `best day ${jm(d.best)} - worst ${jm(d.worst)}` : 'no closed trade'],
       ['Trades', `<b>${d.n}</b>`, `${d.shorts} short - ${d.longs} long`],
@@ -43,7 +43,7 @@
       d.strat.map(s => `<div class="jst"><span><b style="color:#fff;font-weight:600">${esc(s.name)}</b><small>backtest ${s.bt ? s.bt.n + ' trades, ' + s.bt.win + '% win' : '-'}</small></span>` +
         `<span class="r">${s.n}</span><span class="r">${s.win == null ? '-' : s.win + '%'}</span><span class="r j${jc(s.net)}">${jm(s.net)}</span><span class="r">${jm(s.avg)}</span></div>`).join('');
     const jt = $('j-trades').previousElementSibling;   // 3.15: the totals line - gross / locates / net (+ unused locates)
-    if (jt) jt.innerHTML = `Trades <span class="sm">newest first - click a symbol for its chart - P&amp;L after locates</span><span class="jtot">` +
+    if (jt) jt.innerHTML = `Trades<span class="jtot">` +
       `<span>Gross <b class="${jc(d.gross)}">${jm(d.gross)}</b></span><span>Locates <b class="${d.loc ? 'red' : ''}">${jm(-d.loc)}</b></span>` +
       (d.unused ? `<span title="${esc((d.unusedList || []).map(u => u.d + ' ' + u.sym + ' ' + jm(-u.cost)).join(', '))}">Unused locates <b class="red">${jm(-d.unused)}</b></span>` : '') +
       `<span>Net <b class="${jc(d.net)}">${jm(d.net)}</b></span></span>`;

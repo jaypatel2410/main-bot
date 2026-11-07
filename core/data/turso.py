@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LH Short Bot 3.14 - the cloud database (Turso / libSQL over HTTPS, no extra package needed).
+"""Kestrel 3.14 - the cloud database (Turso / libSQL over HTTPS, no extra package needed).
 
 Everything that used to live in files on this PC and that you want on every PC lives here: settings (favorites,
 watchlist, layout, hotkeys, colors ...), backtest runs + trades + your notes, the trade journals, the vault feed queue
@@ -55,7 +55,8 @@ def _read_env_file():
     for _ in range(4):
         d = os.path.dirname(d)
         cands.append(os.path.join(d, ".env"))
-    cands.append(os.path.join(os.environ.get("LOCALAPPDATA", ""), "LHShortBot", ".env"))
+    cands.append(os.path.join(os.environ.get("LOCALAPPDATA", ""), "Kestrel", ".env"))
+    cands.append(os.path.join(os.environ.get("LOCALAPPDATA", ""), "LHShortBot", ".env"))   # before the Kestrel rename
     for p in cands:
         try:
             with open(p, encoding="utf-8") as fh:

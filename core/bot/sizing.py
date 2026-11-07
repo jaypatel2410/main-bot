@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LH Short Bot - Bot: the 09:00 sizing base and position size.
+"""Kestrel - Bot: the 09:00 sizing base and position size.
 Part of the Bot class (core/bot/bot_core.py): main.py runs this file in its own namespace. Code moved here unchanged."""
 
 class _BotSizing:

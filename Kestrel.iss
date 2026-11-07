@@ -1,30 +1,30 @@
 ; =====================================================================================================================
-;  LH Short Bot - Windows installer (Inno Setup 6). build_installer.bat compiles it; you do not need to open it.
-;  In:  dist\LHShortBot.exe (from build_bot_exe.bat) + .env.example + the guide
-;  Out: installer\LHShortBot_Setup_3.12.0.exe  - copy that one file to any Windows 10/11 PC and run it.
+;  Kestrel - Windows installer (Inno Setup 6). build_installer.bat compiles it; you do not need to open it.
+;  In:  dist\Kestrel.exe (from build_bot_exe.bat) + .env.example + the guide
+;  Out: installer\Kestrel_Setup_3.12.0.exe  - copy that one file to any Windows 10/11 PC and run it.
 ;
-;  - Installs for the current Windows user only (no administrator rights): %LOCALAPPDATA%\Programs\LH Short Bot.
-;    The app folder stays writable, so the bot's .env file lives next to LHShortBot.exe as usual.
+;  - Installs for the current Windows user only (no administrator rights): %LOCALAPPDATA%\Programs\Kestrel.
+;    The app folder stays writable, so the bot's .env file lives next to Kestrel.exe as usual.
 ;  - NEVER packs your .env (your keys): every PC gets its own .env (see the last page of the installer).
 ;  - Uninstall removes the program files only. Your .env, settings, journals and candle cache stay
-;    (%LOCALAPPDATA%\LHShortBot\ and the .env in the app folder) - an update keeps them too.
+;    (%LOCALAPPDATA%\Kestrel\ and the .env in the app folder) - an update keeps them too.
 ; =====================================================================================================================
-#define AppName "LH Short Bot"
+#define AppName "Kestrel"
 #define AppVersion "3.12.0"
-#define AppExe "LHShortBot.exe"
+#define AppExe "Kestrel.exe"
 
 [Setup]
 AppId={{8C4F2A71-3B5E-4D2A-9C61-5E0B7A1D3F11}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
-AppPublisher=LH
-DefaultDirName={localappdata}\Programs\LH Short Bot
+AppPublisher=Kestrel
+DefaultDirName={localappdata}\Programs\Kestrel
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=installer
-OutputBaseFilename=LHShortBot_Setup_{#AppVersion}
+OutputBaseFilename=Kestrel_Setup_{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
@@ -57,7 +57,7 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app
 Filename: "{app}\{#AppExe}"; Description: "Start {#AppName} now"; WorkingDir: "{app}"; Flags: nowait postinstall skipifsilent unchecked
 
 [Messages]
-FinishedLabel=LH Short Bot is installed.%n%nOn this PC the bot needs its own .env file with your keys: start the app once (it creates .env in the app folder), then open Start menu > LH Short Bot - keys and settings (.env) and fill in the TradeZero keys and the Discord webhook. Or copy your .env from your main PC into the app folder.%n%nIB Gateway must be installed and logged in on this PC too.%n%nRun the bot on ONE PC at a time per TradeZero account - two running bots would both place orders.
+FinishedLabel=Kestrel is installed.%n%nOn this PC the bot needs its own .env file with your keys: start the app once (it creates .env in the app folder), then open Start menu > Kestrel - keys and settings (.env) and fill in the TradeZero keys and the Discord webhook. Or copy your .env from your main PC into the app folder.%n%nIB Gateway must be installed and logged in on this PC too.%n%nRun the bot on ONE PC at a time per TradeZero account - two running bots would both place orders.
 
 [Code]
 const
@@ -87,7 +87,7 @@ begin
   Result := True;
   if not WebView2Installed() then
   begin
-    if MsgBox('LH Short Bot draws its window with Microsoft Edge WebView2, which is not installed on this PC.' + #13#10 + #13#10 +
+    if MsgBox('Kestrel draws its window with Microsoft Edge WebView2, which is not installed on this PC.' + #13#10 + #13#10 +
               'Open the Microsoft download page now? (Install "Evergreen Bootstrapper", then run this setup again.)',
               mbConfirmation, MB_YESNO) = IDYES then
       ShellExec('open', 'https://go.microsoft.com/fwlink/p/?LinkId=2124703', '', '', SW_SHOWNORMAL, ewNoWait, Code);

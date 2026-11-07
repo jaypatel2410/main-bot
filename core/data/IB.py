@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""IB - the market data of LH Short Bot 3.12: the IB Gateway connection (connect / reconnect, 1-minute candles,
+"""IB - the market data of Kestrel 3.12: the IB Gateway connection (connect / reconnect, 1-minute candles,
 live quotes, the halt flag, the scanner), the chart data sent to the page, the candle cache (bar_cache.db) and the read
 only IB data vault, and the per-symbol candle state used by the bot.
-Part of LH Short Bot - keep it next to main.py. Names written app.X live in main.py (the settings at its top).
+Part of Kestrel - keep it next to main.py. Names written app.X live in main.py (the settings at its top).
 """
 import sys
 import logging
 import asyncio
 import calendar
+import copy
 import math
 import os
 import re
@@ -366,6 +367,15 @@ class Backend:
         self.scan_cfg = {"up": 30.0, "px": 0.5}
         self.scan_tk = {}                  # symbol -> (contract, ticker)
         self.scan_order, self.scan_at, self.scan_err = [], "", ""
+        self.sparks = None                 # 3.15: the price line on each Scanner card (scan_spark.py)
+        self.tape = None                   # 3.15: Time & Sales of the open chart (tape.py)
+        self.scan_vis = set()              # 3.15: stocks shown on the last push (a new one gets its whole line)
+        self.scan_hidden = 0
+        self.scan_eup = 0.0                # 3.15: the up % the shared scan list was asked with (rows under the screen's own up % are hidden)
+        self.gain_want = {}                # 3.15: one shared IB gainers scan - user -> (up %, price, rows, last ask)
+        self.gain_cache = []               # ... recent results [{up, px, rows, t, data}]
+        self.gain_busy = {}                # ... (up, px, rows) -> the request in flight (callers wait for the same one)
+        self.gain_n = 0                    # ... IB scanner requests made today (bot center / log)
         self.thread = threading.Thread(target=self._thread_main, name="ib-loop", daemon=True)
 
     # ---- thread entry points ----
@@ -689,7 +699,7 @@ class Backend:
         got.sort(key=lambda x: x[0])
         rows = rows_from_tuples([(dn, cs) for dn, cs, _ in got])
         if got:
-            if app.OLDER_DAY_SIGNALS and app.jr_mode():
+            if app.OLDER_DAY_SIGNALS:
                 self.loop.create_task(self._older_signals(st, got))
             self._prefetch_soon(st, got[0][0] * 86400 + SESSION_START_SEC)
         return {"rows": rows, "src": src}
@@ -725,7 +735,7 @@ class Backend:
             self.prefetch_busy = False
 
     async def _older_signals(self, st, got):
-        """3.11: the strategies (Jay-read + max squeeze, the chart's backtest view) on older days -> triangles on the
+        """3.11: the strategies (Jay-read 2 / v1.2, the chart's backtest view) on older days -> triangles on the
         chart and cards in the Signals panel. Display only: this never reaches the bot or TradeZero."""
         try:
             daily = None
@@ -1364,6 +1374,60 @@ class Backend:
             pass
         return getattr(self, "vol_mult", 1.0)
 
+    def tape_obj(self):
+        """3.15: Time & Sales of the open chart (created on first use; the UI bridge draws it)."""
+        if self.tape is None:
+            import tape as _tp
+            self.tape = _tp.Tape(lambda text, kind="info": log.warning(text))
+            self.bridge.tape = self.tape
+        return self.tape
+
+    # ---- 3.15: ONE shared IB top-% gainers scan (Scanner screen + short auto-scanner + premarket long) ----
+    async def gainers(self, who, up, px, rows=50, max_age=10.0, exact=False, share=None):
+        """IB TOP_PERC_GAIN (STK.US.MAJOR) shared by every user. A result younger than max_age seconds is reused.
+        Users that re-check the stocks themselves (exact=False: the Scanner screen, the premarket long) share ONE request
+        made with the loosest up % / price any of them asked for in the last minute. exact=True gets a list asked with
+        exactly its own up % / price (the short scanner when it has no live quotes to check with; the premarket long,
+        which seeds every stock it gets - share=True keeps its settings in the shared ask so it normally uses that one).
+        Returns (contracts in IB rank order = biggest % gain first, the up % the list was asked with)."""
+        up, px, rows = float(up), float(px), max(1, min(50, int(rows)))
+        mono = time.monotonic()
+        if share if share is not None else not exact:
+            self.gain_want[who] = (up, px, rows, mono)
+        for e in reversed(self.gain_cache):
+            if mono - e["t"] > max_age or e["rows"] < rows:
+                continue
+            if (e["up"] == up and e["px"] == px) if exact else (e["up"] <= up + 1e-9 and e["px"] <= px + 1e-9):
+                return [copy.copy(c) for c in e["data"]], e["up"]
+        if exact:
+            key = (up, px, rows)
+        else:
+            live = [w for w in self.gain_want.values() if mono - w[3] <= 60] or [(up, px, rows, mono)]
+            key = (min(w[0] for w in live), min(w[1] for w in live), max(w[2] for w in live))
+        fut = self.gain_busy.get(key)
+        if fut is None:
+            fut = self.loop.create_task(self._gainers_fetch(*key))
+            self.gain_busy[key] = fut
+            fut.add_done_callback(lambda _f, k=key: self.gain_busy.pop(k, None))
+        # each user gets its OWN contract objects (as with its own request before): IB keeps one live quote per contract
+        # object, so the Scanner screen dropping a row must never cancel the long's / the bot's stream of that stock
+        return [copy.copy(c) for c in await asyncio.shield(fut)], key[0]
+
+    async def _gainers_fetch(self, up, px, rows):
+        ib = self.ib
+        if ib is None or not ib.isConnected() or app.ScannerSubscription is None:
+            raise ConnectionError("IB Gateway not connected")
+        sub = app.ScannerSubscription(instrument="STK", locationCode="STK.US.MAJOR", scanCode="TOP_PERC_GAIN",
+                                      numberOfRows=rows, abovePrice=px)
+        flt = [app.TagValue("changePercAbove", f"{up:g}")] if up > 0 else []
+        data = list(await asyncio.wait_for(ib.reqScannerDataAsync(sub, [], flt), 20) or [])
+        out = [d.contractDetails.contract for d in data]
+        mono = time.monotonic()
+        self.gain_cache = [e for e in self.gain_cache if mono - e["t"] <= 120][-5:] + [
+            {"up": up, "px": px, "rows": rows, "t": mono, "data": out}]
+        self.gain_n += 1
+        return out
+
     async def _scan_loop(self):
         next_scan = 0.0
         try:
@@ -1379,10 +1443,11 @@ class Backend:
                     self.scan_force = False
                     next_scan = mono + app.SCAN_SCREEN_EVERY_SEC
                     try:
-                        sub = app.ScannerSubscription(instrument="STK", locationCode="STK.US.MAJOR", scanCode="TOP_PERC_GAIN",
-                                                  numberOfRows=app.SCAN_SCREEN_ROWS, abovePrice=self.scan_cfg["px"])
-                        flt = [app.TagValue("changePercAbove", f"{self.scan_cfg['up']:g}")]
-                        data = list(await asyncio.wait_for(ib.reqScannerDataAsync(sub, [], flt), 20) or [])
+                        # 3.15: the shared gainers scan (one IB request also serves the short scanner and the long);
+                        # the top SCAN_SCREEN_ROWS get live quotes, rows under the screen's own up % are hidden
+                        cons, self.scan_eup = await self.gainers("screen", self.scan_cfg["up"], self.scan_cfg["px"],
+                                                                 50, app.SCAN_SCREEN_EVERY_SEC)
+                        cons = list(cons)[:app.SCAN_SCREEN_ROWS]
                         # 3.12.1: after 16:00 IB's regular-hours list misses stocks that run only after the close
                         # (INO 10-30): add IB's after-hours gainers, merged into the same list (duplicates dropped)
                         net = self.now_et()
@@ -1392,12 +1457,11 @@ class Backend:
                                                                  scanCode="TOP_AFTER_HOURS_PERC_GAIN",
                                                                  numberOfRows=app.SCAN_SCREEN_ROWS, abovePrice=self.scan_cfg["px"])
                                 ah = await asyncio.wait_for(ib.reqScannerDataAsync(sub_ah, [], []), 20)
-                                data = list(ah or []) + data
+                                cons = [d.contractDetails.contract for d in ah or []] + cons
                             except Exception as exc:
                                 log.warning("scanner screen: after-hours scan failed: %r", exc)
                         order = []
-                        for d in data or []:
-                            c = d.contractDetails.contract
+                        for c in cons:
                             sym = str(getattr(c, "symbol", "") or "").upper().strip().replace(" ", ".")
                             if not re.match(r"^[A-Z][A-Z0-9.]{0,7}$", sym) or sym in order:
                                 continue
@@ -1411,6 +1475,16 @@ class Backend:
                                     self.scan_tk[sym] = (c, ib.reqMktData(c, "165", False, False))
                         for sym in [s for s in self.scan_tk if s not in order]:
                             self._scan_cancel(sym)
+                        try:                                 # 3.15: the card's price line (one IB request per stock, paced)
+                            if self.sparks is None:
+                                import scan_spark as _sp
+                                self.sparks = _sp.Sparks(self, app)
+                            self.sparks.forget(set(order))
+                            for sym in order:
+                                c0, tk0 = self.scan_tk.get(sym, (None, None))
+                                self.sparks.want(sym, c0 if c0 is not None else getattr(tk0, "contract", None))
+                        except Exception:
+                            log.exception("scanner card lines")
                         self.scan_order = order
                         self.scan_at = self.now_et().strftime("%H:%M:%S")
                         self.scan_err = ""
@@ -1428,8 +1502,10 @@ class Backend:
         mult = self._vol_mult()
         net = self.now_et()
         pre = net.hour * 3600 + net.minute * 60 < app.K.rth_s
+        pre_ah = net.hour * 3600 + net.minute * 60 >= 16 * 3600      # after the close: the after-hours list has no % filter
         rows = []
         bot = self.bot
+        hidden, vis = 0, set()
         for i, sym in enumerate(self.scan_order, 1):
             c, tk = self.scan_tk.get(sym, (None, None))
             if tk is None:
@@ -1454,23 +1530,45 @@ class Backend:
                     need.append(f"${app.jrm().MIN_DOLLAR_VOL / 1e6:g}M traded (now ${dol / 1e6:.1f}M)")
                 chips.append({"k": "jr", "ok": not need, "t": app.jr_label() + ": " + ("up / $ ok - waits for the crack and a "
                               "bounce" if not need else "needs " + ", ".join(need))})
-            if app.sq_on():
-                ok = up_hi is not None and up_hi >= app.SQ.MIN_UP_PCT
-                chips.append({"k": "sq", "ok": ok, "t": "Squeeze: " + (f"up {app.SQ.MIN_UP_PCT:g}% ok - waits for a swing high "
-                              f"and a {app.SQ.SQUEEZE_PCT:g}% squeeze over it" if ok else f"needs up {app.SQ.MIN_UP_PCT:g}%")})
             if app.LP is not None and pre:
                 g = getattr(app.LP, "MIN_GAP_PCT", 0.3) * 100
                 ok = chg is not None and chg >= g
                 chips.append({"k": "long", "ok": ok, "t": "Premarket long: " + (f"up {g:g}% - in its own scan" if ok
                                                                                else f"needs up {g:g}%")})
             fl = self.floats.peek(sym) if getattr(self, "floats", None) is not None else None    # 3.15
+            cap = fl["v"] * last if fl and fl.get("v") and last else None   # 3.15: market cap = shares x price
+            pos = None
+            try:
+                if bs is not None and bot._in_position(bs):
+                    ent = bs.entry or {}
+                    pos = {"qty": int(ent.get("filled") or 0), "avg": app._f(ent.get("avg")), "stop": app._f(bot._stop_px(bs))}
+            except Exception:
+                pos = None
+            if (pos is None and not pre_ah and chg is not None and self.scan_eup < self.scan_cfg["up"] - 1e-9
+                    and chg < self.scan_cfg["up"]):
+                continue                             # 3.15: shared list asked with a lower up % - not up enough for this screen
+            if pos is None and not app.scan_keep(vol, cap):
+                hidden += 1                          # 3.15: under 1M shares today / worth over $1B: not shown
+                continue
+            spark = None
+            if self.sparks is not None:
+                try:
+                    spark = self.sparks.line(sym, last, vol if vol else None, force=sym not in self.scan_vis)
+                except Exception:
+                    log.exception("scanner card line %s", sym)
+            if spark is not None or (self.sparks is not None and sym in self.sparks.rows):
+                vis.add(sym)
             rows.append({"n": i, "sym": sym, "last": app._f(last), "pc": app._f(pc), "chg": app._f(chg, 1), "hi": app._f(hi),
                          "float": fl and {"v": fl["v"], "kind": fl["kind"], "age": fl["age"], "src": fl["src"], "asof": fl.get("asof", "")},
                          "vol": app._f(vol, 0), "dol": app._f(dol, 0), "rvol": app._f(vol / avg, 1) if avg else None,
                          "from": app._f(frm, 1), "halt": app._num(getattr(tk, "halted", None)) is not None,
-                         "watch": bs is not None, "status": bs.status if bs is not None else "", "chips": chips})
+                         "watch": bs is not None, "status": bs.status if bs is not None else "", "chips": chips,
+                         "cap": app._f(cap, 0), "pos": pos, "spark": spark,
+                         "sstop": bot is not None and sym in getattr(bot, "short_stop", ())})
+        self.scan_vis, self.scan_hidden = vis, hidden
         self.bridge.call("setScan", {"rows": rows, "at": self.scan_at, "err": self.scan_err, "cfg": self.scan_cfg,
-                                     "n": len(rows), "on": self.scan_on})
+                                     "n": len(rows), "on": self.scan_on, "hidden": hidden,
+                                     "minVol": app.SCAN_MIN_DAY_VOLUME, "maxCap": app.SCAN_MAX_MARKET_CAP_USD})
 
     def _on_bars(self, st, bars, has_new):
         if st is not self.state or not st.subscribed:
@@ -1654,7 +1752,7 @@ class Backend:
         st.has_open = any(t["open"] for t in latest["trades"]) or bool(latest["stats"].get("armed"))
         payload = {"gen": st.gen, "day": latest["day"], "live": latest["live"], "markers": markers,
                    "skipMarkers": latest["skip_markers"], "trades": trades, "skips": latest["skips"][-80:],
-                   "levels": latest["levels"], "today": latest["stats"], "week": week, "scratch": app.STRAT.SCRATCH_R}
+                   "levels": latest["levels"], "today": latest["stats"], "week": week, "scratch": app.SCRATCH_R}
         js = app._dumps(payload)
         if js != st.sig_json:
             st.sig_json = js
@@ -1677,15 +1775,6 @@ class Backend:
                         "text": f"{key[2]}  \u00b7  the stock halted right after the entry - treat it as not filled"})
                     log.info("CANCELLED %s %s (halt right after the entry)", st.sym, key[2])
         st.shown_open = {(latest["day"], tr["t"], tr["setup"]) for tr in latest["trades"] if tr["open"]} if live else set()
-        armed = latest["stats"].get("armed")
-        if armed and live and st.initial_done:
-            akey = (latest["day"], armed["trigger"], "ARMED")       # same top = same limit = one toast
-            if akey not in st.alerted:
-                st.alerted.add(akey)
-                self._toast("warn", f"{st.sym}: bounce zone armed - short limit {fp(armed['trigger'])} "
-                                    f"({app.STRAT.ZONE_FAR_PCT:g}% under the top {fp(armed['top'])}, dip {armed['dip'] or 0:.0f}%), "
-                                    f"stop {fp(armed['stop'])}")
-                log.info("ARMED %s %s limit %s stop %s", st.sym, armed["setup"], armed["trigger"], armed["stop"])
         for tr in latest["trades"]:
             key = (latest["day"], tr["t"], tr["setup"])
             if not st.initial_done or not live:
@@ -1699,7 +1788,7 @@ class Backend:
                     "kind": "short", "t": tr["t"], "title": f"SHORT SIGNAL  {st.sym}",
                     "text": f"S{tr['n']} {tr['setup']}  \u00b7  entry {fp(tr['entry'])}  \u00b7  stop {fp(tr['stop'])} "
                             f"({(tr['risk'] or 0):.1f}%)  \u00b7  top {fp(tr['top'])}  \u00b7  dip {(tr['dip'] or 0):.0f}%  \u00b7  "
-                            f"hold to {app.STRAT.EOD_COVER_TIME}"})
+                            f"hold to {app.JR_EOD_COVER_TIME or app.EOD_COVER_TIME}"})
                 if self.settings.get("sound"):
                     app._beep("short")
                 log.info("SIGNAL %s %s entry %s stop %s", st.sym, tr["setup"], tr["entry"], tr["stop"])

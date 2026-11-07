@@ -1,4 +1,4 @@
-"""LH Short Bot 3.13.0 - safety checks (no IB, no TradeZero, no orders). Run from the bot folder:  python tests/test_safety_313.py
+"""Kestrel 3.13.0 - safety checks (no IB, no TradeZero, no orders). Run from the bot folder:  python tests/test_safety_313.py
 
 1  live trading stays locked: ALLOW_LIVE_TRADING is False in core/settings.py, a LIVE account is blocked, and neither the
    .env file nor an environment variable can switch it on
@@ -63,7 +63,8 @@ print("3 start-up defaults")
 ns["set_modes"]({})
 check("Jay-read 2 = trading", ns["mode"]("jr2") == "trading")
 check("Jay-read v1.2 = off", ns["mode"]("jr") == "off")
-check("max squeeze = off (not loaded live)", not ns["sq_on"]() and ns["mode"]("sq") == "off")
+check("max squeeze and v16 not in the live bot (3.15)", "sq" not in ns["MODE_KEYS"] and "SQ" not in ns
+      and "jr_mode" not in ns and "bot_engine" not in ns)
 m = ns["set_modes"]({"jr": "trading", "long": "trading"})
 check("modes saved before 3.13 keep v1.2 off", m["jr"] == "off" and m["jr2"] == "trading")
 ns["set_modes"]({})

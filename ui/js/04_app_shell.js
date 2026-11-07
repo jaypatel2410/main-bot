@@ -231,7 +231,7 @@
   function save(){ api('save_settings', {ext: ext, skipped: showSkip, sound: sound, panel: !$('main').classList.contains('nopanel'),
                                          wside: sideFrac, scanh: scanFrac, newsw: newsFrac, tf: String(tf),
                                          orders: !$('leftcol').classList.contains('oclosed'), ordall: ordAll, ordh: ordFrac,
-                                         otab: oTab}); }
+                                         otab: oTab, ts: !!tsOpen, tsw: tsFrac}); }
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
   function applySizes(){
     const mw = $('main').getBoundingClientRect().width || window.innerWidth;
@@ -325,5 +325,11 @@
   $('d-x').addEventListener('click', () => drawer(null));
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { menu(false); drawer(null); } });
   $('banner').addEventListener('click', () => { const b = $('banner'); goTo(Number(b.dataset.t)); b.className = 'hidden'; });
-
-
+  // 3.15: STOP (top bar, the chart's stock): skip its short signals today / trade the next one again
+  $('q-stop').addEventListener('click', () => {
+    if (!sym) return;
+    const on = !$('q-stop').classList.contains('on');
+    if (bot) { const L = new Set(bot.sstops || []); on ? L.add(sym) : L.delete(sym); bot.sstops = [...L]; }
+    qStopRender(); api('bot_short_stop', sym, on);
+  });
+  setInterval(qStopRender, 500);

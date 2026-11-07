@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LH Short Bot 3.14 - chart notes: your notes pinned to a candle and a price on a ticker's chart.
+"""Kestrel 3.14 - chart notes: your notes pinned to a candle and a price on a ticker's chart.
 
 One note belongs to a ticker and a day, not to a screen: the live chart and every backtest chart of that ticker-day
 show the same notes (right click on either chart -> Add note). Each note:

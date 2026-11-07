@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LH Short Bot 3.14 - real-time news of the stock on the chart (the News pane under the chart), two free sources:
+"""Kestrel 3.14 - real-time news of the stock on the chart (the News pane under the chart), two free sources:
 
     Alpaca news stream   Benzinga headlines of that ticker, pushed over a WebSocket the moment they are published.
                          Opening another chart moves the subscription to it at once. Free Alpaca account:
@@ -247,7 +247,7 @@ class NewsFeed:
     # ------------------------------------------------------------------ SEC EDGAR: the chart's company only
     def _ua(self):
         mail = (self.env_get("SEC_CONTACT_EMAIL", "") or "").strip()
-        return f"LH Short Bot {mail}" if "@" in mail else ""
+        return f"Kestrel {mail}" if "@" in mail else ""
 
     def _get(self, url, ua, timeout=10):
         rq = urllib.request.Request(url, headers={"User-Agent": ua, "Accept-Encoding": "identity"})

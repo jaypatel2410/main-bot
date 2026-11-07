@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LH Short Bot 3.15 - float (reference data only; market data stays on IB) for the top-bar chip and the scanner column.
+"""Kestrel 3.15 - float (reference data only; market data stays on IB) for the top-bar chip and the scanner column.
 
     Alpha Vantage   company overview -> SharesFloat. Free key (ALPHAVANTAGE_API_KEY in .env), 25 calls a day: used for
                     the stock on the chart first; every answer is cached CACHE_DAYS days.
@@ -93,7 +93,7 @@ class Floats:
         os.replace(tmp, self.path)
 
     def _get(self, url, headers=None, timeout=12):
-        rq = urllib.request.Request(url, headers=headers or {"User-Agent": "LH Short Bot"})
+        rq = urllib.request.Request(url, headers=headers or {"User-Agent": "Kestrel"})
         with urllib.request.urlopen(rq, timeout=timeout) as r:
             return json.loads(r.read().decode("utf-8"))
 
@@ -119,7 +119,7 @@ class Floats:
         mail = (self.env_get("SEC_CONTACT_EMAIL", "") or "").strip()
         if "@" not in mail:
             return None
-        ua = {"User-Agent": f"LH Short Bot {mail}", "Accept-Encoding": "identity"}
+        ua = {"User-Agent": f"Kestrel {mail}", "Accept-Encoding": "identity"}
         if not self.ciks or time.time() - self.ciks_at > 12 * 3600:
             data = self._get(SEC_TICKERS, ua, 20)
             self.ciks = {str(v["ticker"]).upper(): int(v["cik_str"]) for v in data.values()}

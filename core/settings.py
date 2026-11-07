@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LH Short Bot - the settings (edit these values; they used to be at the top of main.py).
+"""Kestrel - the settings (edit these values; they used to be at the top of main.py).
 Part of main.py: main.py runs this file in its OWN namespace (same names, same settings), so the code works exactly
 as when it was one file. Do not run it on its own - start main.py."""
 # =============================================================================
@@ -27,6 +27,9 @@ VAULT_DB = ""                      # 3.11: your IB data vault (market_data_vault
                                    # older days. "" = not used. Set it in .env (VAULT_DB=C:\...\market_data_vault.db)
 OLDER_DAY_SIGNALS = True           # 3.11: older days loaded by scrolling show the strategies' triangles (display only)
 SCAN_SCREEN_ROWS = 30              # 3.11 Scanner screen: IBKR top % gainers shown (live quotes only while it is open)
+SCAN_MAX_MARKET_CAP_USD = 1_000_000_000   # 3.15: scanner (cards / list) and the short auto-scanner skip stocks worth more than
+                                    # this (shares x price; shares = SEC / Alpha Vantage, unknown = kept). None = off
+SCAN_MIN_DAY_VOLUME = 1_000_000    # 3.15: ... and stocks with less than this many shares traded today. 0 = off
 SCAN_SCREEN_EVERY_SEC = 15         # ... the scan is repeated this often; the quotes stream in between
 # 3.11: the backtest the Journal / Bot center compare with (584 research days 2026-04-01 to 2026-10-05, combined account,
 # LONG_BARS = "rebuild": 224 trades, 63% win, $410,857 from $10,000)
@@ -71,9 +74,8 @@ UNKNOWN_SHORT_CONFIRM_SEC = 4      # 3.8.0: a short of the bot it does not hold 
 TZ_NET_ALERT_AFTER = 3             # calls in a row with no answer from TradeZero (each already retried) before Discord
                                    # is told - a single network blip is only written to the bot log
 
-# Short strategy (3.7.0). The v16 bounce-zone + vacuum short is PARKED, not deleted: "v16" restores 3.6.4 exactly.
-SHORT_STRATEGY = "jay_read"        # "jay_read" = Jay-read short v1.2 (jay_read_short.py next to this file)
-                                   # "v16"      = the parked bounce-zone + vacuum short (LH Short Bot 3.6.4)
+# Short strategies: Jay-read 2 (+ Jay-read v1.2, Off by default). 3.15: the v16 bounce-zone + vacuum short and the max
+# squeeze short are no longer in the live bot (the max squeeze stays in the Dashboard backtests).
 JAY_READ_FILE = "jay_read_short.py"  # the module file next to this one (imported as jay_read_short - keep the name)
 JAY_READ_2 = True                  # 3.13.0: Jay-read 2 (backtest/jay_read_2/jay_read_2_short.py) - the first failed bounce
                                    # near the top, gapper / spiker rules. Its settings: SETTINGS at the top of that file
@@ -94,12 +96,7 @@ JR_ENTRY_TIMEOUT_SEC = 20          # cancel the entry if it is not filled within
 JR_SIGNAL_MAX_AGE_SEC = 90         # a signal older than this when the order would go out (slow locate) is dropped
 JR_PRELOCATE = True                # locate as soon as the read says "momentum broke" (150%+, $20M, high 10+ min old,
                                    # cracked 20%+), so the shares are ready before the signal. Never in ALERT_ONLY mode
-SQUEEZE_SHORT = False              # 3.12.2: OFF - removed from live trading (Jay, 10-31); still in the Backtest tab. 3.9.0: the max squeeze short (max_squeeze_short.py next to this file) runs next to the
-                                   # Jay-read short - one short per stock at a time (the first signal wins), a stop-out of
-                                   # either ends the stock for the day. False = the Jay-read short alone
-SQUEEZE_ALERT_ONLY = False         # 3.10: the start-up default of the max squeeze short's trading mode (the app's menu ->
-                                   # Trading mode rules once you pick one). False = Trading, True = Alert only
-SQUEEZE_FILE = "max_squeeze_short.py"  # imported as max_squeeze_short - keep the name
+
 
 # Auto short-scanner (3.7.0, Jay-read only): IBKR top % gainers -> the short watchlist (no more typing tickers)
 SHORT_SCANNER = True               # False = you add the tickers yourself (stocks up 100%+, before the high fades)
@@ -114,8 +111,6 @@ SHORT_SCAN_INTERVAL_SEC = 30
 SHORT_SCAN_DROP_NEXT_DAY = True    # stocks the scanner added are removed the next day (if no order / position is open)
 
 # Locates: ONE locate per symbol per day, bought early and re-used for every trade that day
-PRELOCATE_VWAP_PCT = 20.0          # stock this % above VWAP = setup forming: request the locate NOW (price basis VWAP + this %)
-PRELOCATE_START = "09:30"          # pre-locates from this time. "08:00" = also premarket (share count then uses the premarket price)
 PRELOCATE_ACCEPT_SINGLE_USE = False  # False = single-use shares are reported, bought only when a setup fires (within the cap)
 LOCATE_WAIT_SEC = 25               # wait up to this long for TradeZero's offer (an offer expires 30 s after it arrives)
 LOCATE_RETRY_SEC = 30              # 3.9.0 locate search (Jay-read / max squeeze): no offer within MAX_LOCATE_PCT or no
@@ -129,9 +124,6 @@ LOCATE_GIVE_UP_DROP_PCT = 10.0     # after a short signal the bot keeps searchin
 MAX_LOCATE_REQUESTS_PER_SYMBOL = 300  # safety cap: locate requests per symbol per day (3.8: 3 - the search needs more)
 
 # Entries and trade management
-VAC_ENTRY_SLIP_PCT = 3.0           # vacuum short = marketable limit this % under the last price (fills at the bid; a
-                                   # protection band, not the expected fill)
-VAC_ENTRY_TIMEOUT_SEC = 20         # cancel the vacuum short if it is not filled within this many seconds
 MIN_STOP_ABOVE_FILL_PCT = 2.0      # the stop is at least this % above the fill price (fill after a fast spike)
 REPLACE_REMOVED_STOP = True        # you cancel the stop and place none: urgent alert, then the bot puts its stop back
 STOP_GRACE_SEC = 60                # ... after this many seconds
@@ -140,6 +132,7 @@ STOP_GRACE_SEC = 60                # ... after this many seconds
 # stock reopens over the stop. Prices shown during a halt (indications, e.g. $100 on a $2 stock) are ignored.
 HALT_REOPEN_WAIT_SEC = 300         # a halt lasts 5 minutes: from the halt time + this, the reopen is checked every ...
 HALT_CHECK_SEC = 1.0               # ... this many seconds (and on every IB tick: the first real trade after the halt decides)
+HALT_STALE_FLAG_SEC = 30          # 3.15: IB's halt flag still up right after a halt ended is not a new halt (unless no trade for this long)
 HALT_SANE_X = 4.0                  # a reopen price more than this x over / under the halt price is not believed (fake print)
 STOP_RETRY_SEC = 2.0               # a stop TradeZero rejected / cancelled (not you): placed again this often while trading,
 STOP_PING_SEC = 60                 # ... and Discord is pinged this often ("STOP NOT PLACED") until it is at TradeZero
@@ -192,7 +185,11 @@ HEARTBEAT_SEC = 20                 # connection heartbeat
 STALE_STREAM_SEC = 75              # re-subscribe if trades print but no candle update arrives for this long
 FINALIZE_MIN_GAP_SEC = 20          # at most one candle re-sync request per this many seconds (IB pacing)
 
-USE_EXTERNAL_STRATEGY = False      # True = load lh_short_backtester.py from the app folder instead of the embedded copy
-EXTERNAL_STRATEGY_FILE = "lh_short_backtester.py"
+# Session times (ET). 3.15: were in the parked v16 engine. VWAP is always from 04:00 (chart, Discord, strategies).
+RTH_START = "09:30"
+RTH_END = "16:00"
+EOD_COVER_TIME = "15:55"           # EOD_AUTO_COVER: every bot short still open is covered at this time
+ET_NAME = "America/New_York"
+SCRATCH_R = 0.2                    # chart trade list: |R| under this counts as a scratch
 LWC_VERSION = "4.2.3"              # TradingView lightweight-charts (downloaded once, then cached)
 DEBUG_DEVTOOLS = False             # True = open the browser dev tools (troubleshooting)

@@ -1,7 +1,7 @@
 """
 JAY-READ SHORT + MAX SQUEEZE SHORT - bulk backtester (the bot's intraday shorts)           (v1.2, 2026-10-22)
 ====================================================================================================================
-Runs the intraday shorts of LH Short Bot 3.9.0 on a list of ticker-days (a gapper sheet: .xlsx or .csv with a ticker
+Runs the intraday shorts of Kestrel 3.9.0 on a list of ticker-days (a gapper sheet: .xlsx or .csv with a ticker
 column and a date column) using 1-minute bars from the IB data vault (market_data_vault.db), or from a folder of CSV
 files (--bars, one-off files): the Jay-read short (jay_read_short.py v1.2) and the max squeeze short
 (max_squeeze_short.py) together, one short per stock at a time - max_squeeze_short.ShortBook, the bot's own code.

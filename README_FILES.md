@@ -1,15 +1,15 @@
-# LH Short Bot - folder layout (3.13.0, 2026-11-01)
+# Kestrel - folder layout (3.13.0, 2026-11-01)
 
-Start the bot with **`main.py`** (or the old `lh_short_bot_app.py`, which starts `main.py`). Keep this layout together.
+Start the bot with **`main.py`** (or the old `kestrel_app.py`, which starts `main.py`). Keep this layout together.
 
 ```
 main bot version 3.12\
   main.py                     start file: sets up the import paths, runs core\ in order, builds the window, main()
-  lh_short_bot_app.py         old start file - only starts main.py
+  kestrel_app.py         old start file - only starts main.py
   .env / .env.example         credentials (.env is never shared and never pushed to git)
   .gitignore                  what git leaves out (.env, logs, caches, backtest runs, vault files)
-  build_bot_exe.bat           builds LHShortBot.exe (bundles core\ and ui\)
-  build_installer.bat, LHShortBot.iss
+  build_bot_exe.bat           builds Kestrel.exe (bundles core\ and ui\)
+  build_installer.bat, Kestrel.iss
   GIT_SETUP.md                how to push this folder to GitHub
   core\
     settings.py               THE SETTINGS - edit values here
@@ -28,9 +28,9 @@ main bot version 3.12\
       chart_notes.py          your chart notes (right click -> Add note): Turso + a copy on this PC, shared by the
                               live chart and every backtest chart of the same ticker-day
     broker\Tradezero.py       orders, positions, locates, fill history (TradeZero REST)
-    notify\lh_discord.py      Discord messages and chart pictures
+    notify\kestrel_discord.py      Discord messages and chart pictures
     window\jsapi.py           what the app window calls
-    backtest_engine\lh_backtest.py   the Backtest tab's engine (separate process)
+    backtest_engine\kestrel_backtest.py   the Backtest tab's engine (separate process)
   ui\
     app.html, app.css         the window's screens and look
     js\01_boot.js ... 13_hotkeys.js  the window's code, one file per area (joined in order into one script;
@@ -53,13 +53,13 @@ How it fits together:
   `main.py`'s own namespace, in that order, exactly as when it was one file. The Bot class is `bot_core.py`'s
   `class Bot` built from five parts (status, orders, stops_halts, sizing, reconcile). Every method is byte-for-byte the
   same code (checked: 176 methods identical, the same names and settings, the same window page).
-- `IB.py`, `Tradezero.py`, `lh_discord.py`, `vault_feed.py`, `lh_backtest.py` are ordinary modules (their folders are
+- `IB.py`, `Tradezero.py`, `kestrel_discord.py`, `vault_feed.py`, `kestrel_backtest.py` are ordinary modules (their folders are
   on the import path).
 - `ui\js\*.js` are joined in file order into the window's one script (checked: identical to the old app.js).
 - An error message names the real file and line, e.g. `core\bot\stops_halts.py, line 212`.
 
 Old files no longer used (delete them): `core\bot.py`, `core\helpers.py`, `core\jsapi.py`, `core\IB.py`,
-`core\Tradezero.py`, `core\lh_discord.py`, `core\lh_backtest.py`, `core\vault_feed.py`, `ui\app.js`.
+`core\Tradezero.py`, `core\kestrel_discord.py`, `core\kestrel_backtest.py`, `core\vault_feed.py`, `ui\app.js`.
 
 ## Daily vault feed (core\data\vault_feed.py)
 

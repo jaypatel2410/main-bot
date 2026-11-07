@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LH Short Bot 3.15 - Settings > Strategies: your changes to a strategy's settings, kept apart from its .py file.
+"""Kestrel 3.15 - Settings > Strategies: your changes to a strategy's settings, kept apart from its .py file.
 
 The defaults stay in the strategy files (backtest/<strategy>/*.py). Saved changes go to strategy_settings.json next to the
 bot (and to Turso when it is set up, so every PC trades the same values). On save - and at every start - they are put

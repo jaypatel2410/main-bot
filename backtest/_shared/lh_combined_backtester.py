@@ -3,7 +3,7 @@
 """
 LH COMBINED BACKTESTER 3.10.0 -  premarket long (05:00-09:00)  +  intraday shorts (Jay-read + max squeeze), ONE account
 ====================================================================================================================
-One file, every strategy of LH Short Bot 3.10.0, with the same logic as the live bot (bars from the IB data vault, no
+One file, every strategy of Kestrel 3.10.0, with the same logic as the live bot (bars from the IB data vault, no
 IB Gateway code in this file):
 
   3.10.0: the long's hard stop sells at stop +1% (LONG_STOP_EARLY_PCT = 1.0), as the live bot (lh_long_premarket.py 1.8).
@@ -92,7 +92,7 @@ LONG_ENABLED = True                # the premarket long (05:00-09:00)
 SHORT_ENABLED = True               # the intraday short (the engine SHORT_STRATEGY picks)
 SHORT_STRATEGY = "jay_read"        # "jay_read" = Jay-read short v1.2 (jay_read_short.py, same folder) - the default
                                    # "jay_read_2" = 3.13.0 Jay-read 2 (backtest/jay_read_2/jay_read_2_short.py)
-                                   # "v16"      = the parked bounce-zone + vacuum short (LH Short Bot 3.6.4)
+                                   # "v16"      = the parked bounce-zone + vacuum short (Kestrel 3.6.4)
 JAY_READ_FILE = "jay_read_short.py"  # the Jay-read module (looked up next to this file, then in the current folder)
 SQUEEZE_ENABLED = True             # 3.9.0: the max squeeze short next to the Jay-read short (one position per stock)
 MIN_SHORT_PRICE = 1.00             # 3.15: no short signal under this price - as the live bot (SHORT_MIN_PRICE): TradeZero

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LH Short Bot - tick-by-tick prices for the few stocks that matter right now (3.12.2, 2026-10-31).
+"""Kestrel - tick-by-tick prices for the few stocks that matter right now (3.12.2, 2026-10-31).
 
 IB streams every single trade ("AllLast" tick-by-tick) for only a handful of stocks at a time, so the bot gives its
 TICK_BY_TICK_MAX slots (5) to the stocks closest to an order, and re-decides every second:
@@ -10,6 +10,7 @@ TICK_BY_TICK_MAX slots (5) to the stocks closest to an order, and re-decides eve
     2  the premarket-long watchlist               (it only lists stocks already up 30%+ inside the fresh window;
                                                    it drops them itself when the window ends or the move fails)
     3  shorts you added yourself                  (scanner auto-adds get a slot only once a setup is live)
+    4  the chart you have open, while Time & Sales is on (3.15) - only when a slot is left over
 
 A stock that stops qualifying gives its slot back within a second. Nothing about the strategies changes: IB puts each
 trade into the SAME ticker object the bot already reads (ticker.last), so the existing price handlers simply hear every
@@ -143,7 +144,7 @@ def wanted_for(bot):
             continue
         if bs.phase in SHORT_ACTIVE:
             p = 0
-        elif bs.jr_sig or bs.hunt or bs.jr_ctx or bs.sq_ctx or bs.pre_req:
+        elif bs.jr_sig or bs.hunt or bs.jr_ctx or bs.pre_req:
             p = 1
         elif not bs.auto_added:
             p = 3
@@ -158,4 +159,10 @@ def wanted_for(bot):
             patch_long(type(tr))
             held = tr.day.pos is not None or tr.busy()
             out.append((0 if held else 2, ("L", tr.sym), tr.contract))
+    # 3.15: the chart you have open while Time & Sales is on - last in line (every watchlist stock above comes first)
+    be = getattr(bot, "be", None)
+    tp, st = getattr(be, "tape", None), getattr(be, "state", None)
+    if (tp is not None and tp.on and st is not None and getattr(st, "subscribed", False)
+            and getattr(st, "contract", None) is not None and st.sym not in {k[1] for _p, k, _c in out}):
+        out.append((4, ("S", st.sym), st.contract))
     return out

@@ -10,13 +10,13 @@
       toast({kind: 'info', text: on ? `${s} added to Favorites` : `${s} removed from Favorites`}); } });
   }
   function renderFav(){
-    $('fv-meta').textContent = favs.length ? `${favs.length} ticker${favs.length === 1 ? '' : 's'} - click to open the chart` : 'Tickers you keep - multi-day runners and more';
+    $('fv-meta').textContent = favs.length ? `${favs.length}` : '';
     if (screen !== 'fav') return;
     const lastOf = s => { if (s === sym) return lastPx; const rw = ((bot && bot.rows) || []).find(x => x.sym === s); return rw ? rw.last : null; };
     $('fv-list').innerHTML = favs.length ? favs.map((f, i) => `<div class="fvrow fvgrid" data-fo="${esc(f.sym)}"><span class="o-t">${i + 1}</span>` +
       `<span class="s">${esc(f.sym)}</span><span class="r" style="text-align:right">${fmtPx(lastOf(f.sym))}</span><span class="o-t">${esc(f.t || '')}</span>` +
       `<button class="sbtn" data-fw="${esc(f.sym)}">+ Watch</button><button class="sbtn danger" data-fx="${esc(f.sym)}">Remove</button></div>`).join('')
-      : '<div class="oempty">No favorites yet. Click the heart next to the ticker on the chart, or type a ticker above.</div>';
+      : '<div class="oempty">No favorites</div>';
   }
   $('q-fav').addEventListener('click', () => favToggle(sym));
   $('fv-add').addEventListener('click', () => { const s = ($('fv-in').value || '').trim().toUpperCase();

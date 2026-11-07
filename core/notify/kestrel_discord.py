@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Discord - the messages of LH Short Bot 3.12: the webhook sender (a background queue, in order, rate limits
+"""Discord - the messages of Kestrel 3.12: the webhook sender (a background queue, in order, rate limits
 respected, so trading never waits on Discord), the message look (colour, tag line, Shorts / Longs / System names, never
 the account id) and the 1-minute chart pictures attached to setups, orders and closed trades.
-(Named lh_discord.py, not discord.py, so it can never clash with the Python package called "discord".)
-Part of LH Short Bot - keep it next to main.py. Names written app.X live in main.py (the settings at its top).
+(Named kestrel_discord.py, not discord.py, so it can never clash with the Python package called "discord".)
+Part of Kestrel - keep it next to main.py. Names written app.X live in main.py (the settings at its top).
 """
 import sys
 import logging
@@ -164,7 +164,7 @@ class Discord:
 
     def _payload(self, item):
         emb = {"title": item["title"], "description": item["text"], "color": COLORS.get(item["kind"], COLORS["info"]),
-               "timestamp": item["ts"]}                   # 3.10: no "LH Short Bot" footer
+               "timestamp": item["ts"]}                   # 3.10: no "Kestrel" footer
         if item.get("tag"):
             emb["author"] = {"name": str(item["tag"])[:250]}
         if item["fields"]:
@@ -197,7 +197,7 @@ class Discord:
         for attempt in range(1 if quick else 5):
             req = urllib.request.Request(self.url + ("&" if "?" in self.url else "?") + "wait=true", data=body, method="POST")
             req.add_header("Content-Type", ctype)
-            req.add_header("User-Agent", f"DiscordBot (https://github.com/lh-short-bot, {app.APP_VERSION})")
+            req.add_header("User-Agent", f"DiscordBot (https://github.com/kestrel-bot, {app.APP_VERSION})")
             try:
                 with urllib.request.urlopen(req, timeout=8 if quick else 15) as resp:
                     resp.read()
@@ -296,12 +296,6 @@ def render_chart_png(sym, rows, title="", levels=None, marks=None, prior=None, h
         av.bar(k, v, color=col, width=0.8, alpha=0.45 if c >= o else 0.75)
     vw = [r[6] for r in rows]
     ax.plot(X, [x if x is not None else float("nan") for x in vw], color=app.VWAP_COLOR, lw=1.4, label="VWAP")
-    if not app.jr_mode():                           # the v16 pre-locate line (VWAP +20%); not a Jay-read level
-        ax.plot(X, [x * (1 + app.PRELOCATE_VWAP_PCT / 100.0) if x is not None else float("nan") for x in vw], color=app.VWAP_COLOR,
-                lw=0.8, ls=":")
-        if vw[-1]:
-            ax.text(n - 1, vw[-1] * (1 + app.PRELOCATE_VWAP_PCT / 100.0), f" VWAP+{app.PRELOCATE_VWAP_PCT:g}%", color=app.VWAP_COLOR,
-                    fontsize=8, va="bottom", ha="right")
     rng = hi - lo or hi * 0.01
     ymin, ymax = lo - rng * 0.05, hi + rng * 0.12
     for L in levels or []:

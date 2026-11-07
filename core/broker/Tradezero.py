@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""TradeZero - the broker side of LH Short Bot 3.12: the REST client (orders, positions, account, locates; one
+"""TradeZero - the broker side of Kestrel 3.12: the REST client (orders, positions, account, locates; one
 keep-alive connection per thread, network retries that never double an order, the urgent no-wait path for a halt
 reopen), the keys from the .env file, and the order-field helpers (status sets, prices, sides, times).
-Part of LH Short Bot - keep it next to main.py. Names written app.X live in main.py (the settings at its top).
+Part of Kestrel - keep it next to main.py. Names written app.X live in main.py (the settings at its top).
 """
 import sys
 import logging

@@ -115,6 +115,8 @@
       if (typeof s.scanh === 'number') scanFrac = clamp(s.scanh, 0.12, 0.88);
       if (typeof s.ordh === 'number') ordFrac = clamp(s.ordh, 0.10, 0.70);
       if (typeof s.newsw === 'number') newsFrac = clamp(s.newsw, 0.15, 0.75);
+      if (typeof s.tsw === 'number') tsFrac = clamp(s.tsw, 0.12, 0.45);     // 3.15: Time & Sales
+      tsShow(!!s.ts);
       if (s.orders === false) $('leftcol').classList.add('oclosed');
       ordAll = !!s.ordall; $('o-all').checked = ordAll;
       const t0 = s.otab || 'pos';                                // 3.10: Positions is the default tab
@@ -129,9 +131,9 @@
       info = cfg.info || {};
       setRecent(cfg.recent);
       $('f-info').textContent = `${info.app || ''} - Strategies: ${info.strategy || ''} - IB ${info.ib || ''} - history ${info.history || ''}`;
-      $('c-up').title = `Gap at the 09:30 open vs prior close - the setup needs ${info.minGap}%+ (before the open: % vs prior close, grey)`;
-      $('c-off').title = `How far the price is under the high of day - green inside the ${info.zoneNear}-${info.zoneFar}% short zone`;
-      if (info.minVol) $('c-vol').title = `Today's volume (premarket included). Green once it passes ${fmtV(info.minVol)} - no shorts before that`;
+      $('c-up').title = 'Gap at the 09:30 open vs prior close (before the open: % vs prior close)';
+      $('c-off').title = 'How far the price is under the high of day';
+      $('c-vol').title = "Today's volume (premarket included)";
       if (cfg.status) this.setStatus(cfg.status);
     },
     setStatus(s){
@@ -177,6 +179,8 @@
       setOverlay('loading', false); setOverlay('empty', false);
       lastUpd = Date.now();
     },
+    tsReset(p){ tsResetTo(p || {}); },
+    tsPush(rows){ tsAdd(rows); },
     upsertBars(p){
       if (p.gen !== gen) return;
       let need = false;
@@ -231,13 +235,12 @@
       const cu = $('c-up'), co = $('c-off');
       const gv = q.gap != null ? q.gap : q.up;
       cu.querySelector('span').textContent = gv == null ? '-' : `${gv >= 0 ? '+' : ''}${gv.toFixed(gv >= 100 ? 0 : 1)}%`;
-      cu.className = 'chip ' + (q.gapOk == null ? '' : q.gapOk ? 'ok' : 'bad');
+      cu.className = 'chip';
       co.querySelector('span').textContent = q.off == null ? '-' : `${q.off.toFixed(1)}%`;
-      co.className = 'chip ' + (q.inZone ? 'ok' : '');
+      co.className = 'chip';
       $('c-hod').querySelector('span').textContent = fmtP(q.hod);
       $('c-vwap').querySelector('span').textContent = fmtP(q.vwap);
       $('c-vol').querySelector('span').textContent = fmtV(q.vol);
-      $('c-vol').className = 'chip ' + (q.volOk == null ? '' : q.volOk ? 'ok' : 'bad');
       $('c-halt').classList.toggle('on', !!q.halted);
       fitSoon();
       for (const t of trades) {
@@ -260,7 +263,7 @@
       oldTrades = oldTrades.filter(t => !ds.has(t.day)).concat(p.trades || []).sort((a, b) => b.t - a.t);
       overlay.refresh(); renderPanel();
     },
-    setScan(p){ scan = p; renderMiniScan(); if (screen === 'scan') renderScan(); },
+    setScan(p){ scan = p; (p.rows || []).forEach(r => { if (r.spark) sparkC[r.sym] = r.spark; }); renderMiniScan(); if (screen === 'scan') renderScan(); },
     news(n){ newsAdd(n); },
     newsStatus(s){ nwStatus = s || {}; renderNews(); },
     newsReset(s){ newsReset(s); },

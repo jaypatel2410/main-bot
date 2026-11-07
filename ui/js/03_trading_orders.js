@@ -1,3 +1,11 @@
+  function qStopRender(){                                    // 3.15: the one STOP button, next to the chart's ticker
+    const b = $('q-stop'); if (!b) return;
+    const on = !!(sym && bot && (bot.sstops || []).includes(sym));
+    b.classList.toggle('on', on); b.classList.toggle('hidden', !sym);
+    b.querySelector('span').textContent = on ? 'SHORTS STOPPED' : 'STOP';
+    b.title = sym ? sstopTitle(sym, on) : '';
+  }
+  const sstopTitle = (s, on) => on ? `STOP is on: ${s} short signals are skipped today - click to trade the next one` : `STOP: skip ${s} short signals today (until you click again)`;
   // ---------------- 3.10: trading mode (menu), positions tab ----------------
   const MODE_ROWS = [['long', 'Premarket long'], ['jr2', 'Jay-read 2 short'], ['jr', 'Jay-read short v1.2']];   // 3.13.0: + Jay-read 2   // 3.12.2: max squeeze short is backtest-only
   let modesSeen = '';
@@ -97,12 +105,13 @@
       else if (r.phase === 'working') act = `<div class="w-act"><span>Entry order working</span>${covBtn('Cancel')}</div>`;
       else if (r.phase === 'manual') act = `<div class="w-act"><span>You manage this short - NO stop</span>` +
         `<button class="sbtn" data-stop="${esc(r.sym)}" data-px="" data-last="${r.last == null ? '' : r.last}" title="Place a stop - the bot manages the short again">Stop</button>${covBtn('Cover')}</div>`;
-      return `<div class="wrow wgrid k-${esc(r.kind)}${r.sym === sym ? ' sel' : ''}" data-sym="${esc(r.sym)}" title="${esc(r.sym + ' - ' + r.status + ' - click to open the chart')}">` +
-        `<span class="w-sym"><b>${esc(r.sym)}</b>${r.halted ? `<i title="${r.ht ? 'halted ' + r.ht + ' at ' + fmtPx(r.hpx) : 'halted'}">HALT${r.hdir === 'UP' ? ' \u25B2' : r.hdir === 'DOWN' ? ' \u25BC' : ''}</i>` : ''}</span><span class="w-last">${fmtPx(r.last)}</span>` +
-        `<span class="w-gap${r.gapOk ? ' ok' : ''}">${gap}</span><span class="w-st">${esc(r.status)}</span>` +
+      return `<div class="wrow wgrid k-${esc(r.kind)}${r.sym === sym ? ' sel' : ''}${r.sstop ? ' sstopped' : ''}" data-sym="${esc(r.sym)}" title="${esc(r.sym + ' - ' + r.status + ' - click to open the chart')}">` +
+        `<span class="w-sym"><b>${esc(r.sym)}</b>${r.tbt ? '<i class="w-tbt" title="Tick-by-tick">T&amp;S</i>' : ''}${r.halted ? `<i title="${r.ht ? 'halted ' + r.ht + ' at ' + fmtPx(r.hpx) : 'halted'}">HALT${r.hdir === 'UP' ? ' \u25B2' : r.hdir === 'DOWN' ? ' \u25BC' : ''}</i>` : ''}</span><span class="w-last">${fmtPx(r.last)}</span>` +
+        `<span class="w-gap${r.gapOk ? ' ok' : ''}">${gap}</span><span class="w-st">${r.sstop ? '<i class="w-ss" title="STOP is on: short signals skipped today">SHORTS STOPPED</i>' : ''}${esc(r.status)}</span>` +
         `<button class="w-x" data-x="${esc(r.sym)}" title="Remove from the watchlist">&times;</button>${act}</div>`;
-    }).join('') : '<div class="empty-sig">Add the tickers the bot should watch (type a ticker above and press Enter).</div>';
+    }).join('') : '<div class="empty-sig">Empty</div>';
     $('botlog').innerHTML = (bot.log || []).slice().reverse().map(l => `<div class="lg k-${esc(l.k)}"><span>${esc(l.t)}</span>${esc(l.x)}</div>`).join('');
+    qStopRender();                                                     // 3.15
     alerts = bot.alerts || []; renderAlerts();                          // 3.11
     if (screen === 'bot') renderBC();
     const nc = (bot.closed || []).length;
@@ -270,7 +279,7 @@
     const q = loc.q, rows = loc.rows || [], inv = loc.inv || [];
     $('lc-badge').textContent = rows.length ? ' ' + rows.length : '';
     $('lc-cap').textContent = loc.cap;
-    $('lc-hint').textContent = loc.paper ? 'paper account - TradeZero has no locates there' : 'pre-borrow / re-usable and single-use offers';
+    $('lc-hint').textContent = loc.paper ? 'Paper - no locates' : '';
     const m = $('lc-msg');
     m.textContent = q ? (q.msg || '') : (loc.tz ? 'Type a symbol and the number of shares, then Get prices.' : 'TradeZero is not connected.');
     m.className = 'lcmsg' + (q && q.err ? ' err' : q && q.state === 'done' ? ' ok' : '');

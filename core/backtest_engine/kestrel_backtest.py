@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""LH Short Bot 3.13 - the Backtest tab's engine (research only: it never connects to IB Gateway or TradeZero).
+"""Kestrel 3.13 - the Backtest tab's engine (research only: it never connects to IB Gateway or TradeZero).
 
 Runs a strategy over ticker-days of the IB data vault (market_data_vault.db) in a SEPARATE PROCESS, so the live bot is
 never slowed, with the same strategy code the bot trades with:
@@ -1145,7 +1145,7 @@ def result(folder, rid, limit=5000):
     return {"summary": sm, "trades": trades, "job": job_cfg, "progress": prog}
 
 
-if __name__ == "__main__":                              # python lh_backtest.py <job.json>  (manual / debugging)
+if __name__ == "__main__":                              # python kestrel_backtest.py <job.json>  (manual / debugging)
     import multiprocessing as _mp
     _mp.freeze_support()
     if len(sys.argv) > 1:

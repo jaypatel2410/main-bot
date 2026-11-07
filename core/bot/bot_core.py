@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LH Short Bot - the auto-trading Bot: start, the 1-second loop, watchlist, strategy reads, vault feed (the rest of the class is in the other core/bot/*.py files).
+"""Kestrel - the auto-trading Bot: start, the 1-second loop, watchlist, strategy reads, vault feed (the rest of the class is in the other core/bot/*.py files).
 Part of main.py: main.py runs this file in its OWN namespace (same names, same settings), so the code works exactly
 as when it was one file. Do not run it on its own - start main.py."""
 
@@ -52,7 +52,8 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
         self.last_push = ""
         self.day = None
         self.trades_today = 0
-        self.sig_today = {"jr2": 0, "jr": 0, "sq": 0}   # 3.11: short signals today (bot center)
+        self.sig_today = {"jr2": 0, "jr": 0}   # 3.11: short signals today (bot center)
+        self.short_stop = set()               # 3.15: STOP button - stocks whose short signals are skipped today
         self.lat_ms = deque(maxlen=50)        # 3.11: signal -> order sent at TradeZero, ms (bot center)
         self._cinfo = (0.0, None)             # 3.11: bar cache info, refreshed at most every 30 s
         self.day_pnl = None
@@ -203,15 +204,6 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
                        "title": "stop" + (" (yours)" if bs.stop_owner == "you" else "")})
         if ent and not ent.get("filled") and ent.get("limit"):
             lv.append({"price": ent["limit"], "color": "#ff9800", "style": "dash", "title": "short limit"})
-        p = e.get("pending")
-        if p and not ent:
-            lv += [{"price": px_round(p["trigger"], False), "color": "#ff9800", "style": "dash", "title": "short limit 12%"},
-                   {"price": p["zone_hi"], "color": "#ce93d8", "style": "dot", "title": "zone 10%"},
-                   {"price": px_round(p["stop"], True), "color": "#f23645", "style": "dot", "title": "stop if filled"}]
-        va = e.get("vac_armed")
-        if va and not ent:
-            lv += [{"price": va["peak"], "color": "#e040fb", "style": "dot", "title": "vacuum peak"},
-                   {"price": va["trigger"], "color": "#e040fb", "style": "dash", "title": "5% pullback"}]
         if e.get("hod"):
             lv.append({"price": e["hod"], "color": "#9598a1", "style": "dot", "title": "HOD"})
         return lv
@@ -247,9 +239,8 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
             if first:
                 plan["sub"] = first + ("." if not first.endswith(".") else "")
             return plan
-        p, v, va = e.get("pending"), e.get("vac"), e.get("vac_armed")
-        if stage == "skipped":                           # the order is gone: show what the engine sees next
-            ent, v = None, None
+        if stage == "skipped":                           # the order is gone: show what the read sees next
+            ent = None
         jp = bs.jr_plan if stage == "jrsignal" else None
         if jp:                                           # 3.7: a Jay-read signal - the short the read wants now
             sj = jp["s"]
@@ -269,34 +260,11 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
             lim = ent.get("limit") or ent.get("trigger")
             plan.update(entry=(lim, "Short limit"), stop=(px_round(ent["stop"], True), "Stop if filled"), ref=lim,
                         path=True, entry_tag="Short here")
-        elif v and stage in ("signal", "locate", None):  # vacuum signal: short at the next open
-            plan.update(entry=(last or v["trigger"], "Short now"), stop=(px_round(v["stop"], True), "Stop if filled"),
-                        ref=last or v["trigger"], path=True, entry_tag="Vacuum short")
-            plan["watch"].append((v["peak"], "Vacuum peak"))
-        elif p:                                          # bounce-zone limit resting 12% under the top
-            plan.update(entry=(px_round(p["trigger"], False), "Short limit 12%"),
-                        stop=(px_round(p["stop"], True), "Stop if filled"), ref=p["trigger"], path=True,
-                        entry_tag="Short the bounce")
-            plan["watch"] += [(p["top"], "Top"), (p["zone_hi"], "Zone top 10%")]
-            if p.get("dip"):
-                plan["supports"].append((p["top"] * (1 - p["dip"] / 100.0), "dip low"))
-        elif va:                                         # vacuum trap armed: short on a close under the trigger
-            stop = va["peak"] * (1 + getattr(STRAT, "VAC_STOP_ABOVE_PEAK_PCT", 3.0) / 100.0)
-            plan.update(entry=(va["trigger"], "Short below"), stop=(px_round(stop, True), "Stop if filled"),
-                        ref=va["trigger"], path=True, entry_tag="Vacuum short")
-            plan["watch"].append((va["peak"], "Vacuum peak"))
-        elif jr_mode():                                  # 3.7: Jay-read - the regular-hours high and the crack low
+        else:                                            # the regular-hours high and the crack low
             if bs.jr is not None and bs.jr.reader.rh > 0 and not math.isinf(bs.jr.reader.rh):
                 plan["watch"].append((bs.jr.reader.rh, "RTH high"))
             if bs.jr_ctx:
                 plan["supports"].append((bs.jr_ctx["low"], "crack low"))
-        else:                                            # nothing set up yet: where the bot starts to act
-            vw = e.get("vwap")
-            if not vw and st and st.tc:
-                vw = next((r[6] for r in reversed(chart_rows_today(st)) if r[6]), None)
-            if vw:
-                plan["watch"].append((vw * (1 + PRELOCATE_VWAP_PCT / 100.0), f"VWAP +{PRELOCATE_VWAP_PCT:g}%"
-                                      + ("" if (bs.pre_req or bs.pre_done) else " = locate")))
         if bs.phase == "locating":
             plan["title"] = clean or "locating shares"
         for m in marks or []:                            # marks the message adds (skipped signal ...)
@@ -317,38 +285,39 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
         tzs = f"TradeZero {acct} connected" if self.tz_ready() else self.tz_status.get("text", "TradeZero: -")
         win = {"long": (f"{LP.SCAN_START}-{LP.FLATTEN_AT[:5]}" if LP is not None else ""),
                "jr": (f"{JR.SIGNAL_START}-{JR.SIGNAL_END}" if JR is not None else ""),
-               "jr2": (f"{JR2.SIGNAL_START}-{JR2.SIGNAL_END}" if JR2 is not None else ""),
-               "sq": (f"{SQ.SIGNAL_START}-{SQ.SIGNAL_END}" if sq_on() else "")}
+               "jr2": (f"{JR2.SIGNAL_START}-{JR2.SIGNAL_END}" if JR2 is not None else "")}
         fields = []
         for k in MODE_KEYS:
-            if (k == "sq" and not sq_on()) or (k == "jr2" and JR2 is None):
+            if k == "jr2" and JR2 is None:
                 continue
             if k == "long" and (not LONG_PREMARKET or self.longbot is None):
                 fields.append((MODE_NAMES[k], "NOT RUNNING" + (f"\n{LP_IMPORT_ERROR}" if LP_IMPORT_ERROR else ""), True))
                 continue
             m = mode(k)
+            if m == "off":                               # 2026-11-06: a strategy that is Off is not mentioned
+                continue
             fields.append((MODE_NAMES[k], {"trading": "TRADING", "alert": "ALERT ONLY", "off": "OFF"}[m] + "\n"
                            + ({"trading": win[k], "alert": "no orders", "off": "not watched"}[m] or "-"), True))
-        if jr_mode() and JR is None:
+        if JR is None:
             fields.append(("Jay-read short", f"NOT LOADED: {JR_IMPORT_ERROR} - put {JAY_READ_FILE} next to the app", False))
         long_sz = (f"Long {LP.ACCOUNT_PCT:g}% (max ${LP.MAX_POSITION_USD / 1000:,.0f}k)\n" if LP is not None else "")
         fields += [("Size", long_sz + f"Short {ACCOUNT_PCT:g}% (max ${MAX_POSITION_USD / 1000:,.0f}k)", True),
                    ("Locates", f"bot max {MAX_LOCATE_PCT:g}% of price", True),
                    ("Watchlist", (", ".join(self.syms) or "empty")
-                    + (f"\n+ scanner {SHORT_SCAN_START}" if jr_mode() and SHORT_SCANNER else ""), True),
+                    + (f"\n+ scanner {SHORT_SCAN_START}" if SHORT_SCANNER else ""), True),
                    ("Close", (f"shorts covered at {JR_EOD_COVER_TIME}" if JR_EOD_COVER_TIME
                               else f"no automatic cover - alert at {EOD_ALERT_TIME}"), True),
                    ("Connections", f"IB Gateway {ibs}  ·  {tzs}  ·  Discord OK", False)]
-        nt = not_trading()
+        nt = [(k, m) for k, m in not_trading() if m != "off"]      # 2026-11-06: Off strategies are not mentioned
         if not nt:
             title = "Every strategy is trading"
             desc = f"Auto-trade is {'ON' if self.auto else 'OFF'}."
         else:
             title = "Not trading now: " + ", ".join(f"{MODE_NAMES[k]} ({MODE_TEXT[m].lower()})" for k, m in nt)
-            tr = [MODE_NAMES[k].lower() for k in MODE_KEYS if mode(k) == "trading" and (k != "sq" or sq_on())]
+            tr = [MODE_NAMES[k].lower() for k in MODE_KEYS if mode(k) == "trading"]
             desc = (f"Auto-trade is {'ON' if self.auto else 'OFF'}."
                     + (f" The {' and the '.join(tr)} place{'s' if len(tr) == 1 else ''} orders." if tr else "")
-                    + "\nTurn one on in the app: menu → Trading mode → Trading.")
+                    )
         if not self.auto:
             desc += "\nAuto-trade is OFF - no strategy places orders until you switch it on (menu → Auto-trade)."
         kind = "warn" if nt or not self.auto else "info"
@@ -407,7 +376,7 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
             self.auto = False
         elif on != self.auto:
             self.auto = on
-            nt = not_trading()
+            nt = [(k, m) for k, m in not_trading() if m != "off"]
             self._notify("Auto-trade ON - the bot places orders" if on else "Auto-trade OFF - no new orders",
                          (("Not trading: " + ", ".join(f"{MODE_NAMES[k]} ({MODE_TEXT[m].lower()})" for k, m in nt) + ".")
                           if on and nt else "") if on else
@@ -437,12 +406,12 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
         set_modes(saved)
         if key == "long" and self.longbot is not None:
             self.longbot.set_mode(value)
-        if key in ("jr2", "jr", "sq"):                   # 3.13.0: the short book holds the strategies that are not Off -
+        if key in ("jr2", "jr"):                   # 3.13.0: the short book holds the strategies that are not Off -
             for bs in self.syms.values():                # rebuilt from today's candles on the next candle (idle stocks;
                 b = bs.jr                                # a stock with an order / position keeps its book until flat)
                 if b is not None and bs.phase == "idle" and b.pos is None and b.awaiting is None and bs.jr_sig is None:
                     bs.jr = None
-        nt = not_trading()
+        nt = [(k, m) for k, m in not_trading() if m != "off"]
         after = {"trading": f"The next {MODE_NAMES[key]} signal places a real order.",
                  "alert": "Its signals go to Discord as alerts - no orders.",
                  "off": "Its signals are not traded and not posted."}[value]
@@ -655,60 +624,18 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
         while b > a and tc[b - 1] >= cur_min:            # the forming candle is not used (decided at the close)
             b -= 1
         if b <= a:
-            bs.eng = {"pending": None, "vac": None, "vac_armed": None, "trades": [], "hod": None, "gap": None,
-                      "gapOk": False, "block": "no candles today yet", "vol": 0.0, "bars": 0, "vwap": None, "close": None}
+            bs.eng = {"trades": [], "hod": None, "gap": None, "gapOk": False, "block": "no candles today yet", "vol": 0.0,
+                      "bars": 0, "vwap": None, "close": None}
             return
         frame = make_frame(st, a, b)
         has_rth = any(is_rth(t) for t in tc[a:b])
         prior = prior_for(st, dn)
-        if jr_mode():                                    # 3.7.0: the Jay-read short (the v16 engine is parked)
-            bs.eng = jr_eng_info(frame, has_rth, prior)
-            if jr_ready() and prior:
-                try:
-                    self._jr_feed(bs, frame, dn, prior)
-                except Exception:
-                    log.exception("jay-read feed %s", bs.sym)
-            return
-        try:
-            bs.eng = await self.loop.run_in_executor(self.be.pool, bot_engine, bs.sym, frame, day_date(dn), prior, has_rth,
-                                                     frozenset(bs.void))
-        except Exception:
-            log.exception("bot engine %s", bs.sym)
-            return
-        self._setup_events(bs)
-
-    def _setup_events(self, bs):
-        """Report a newly armed bounce limit / vacuum trap once, with the chart."""
-        e = bs.eng or {}
-        p = e.get("pending")
-        if p and ("B", round(p["trigger"], 6)) not in bs.seen_armed and bs.phase == "idle":
-            bs.seen_armed.add(("B", round(p["trigger"], 6)))
-            why = self.can_open()
-            self._notify(f"\U0001F3AF {bs.sym}: BOUNCE-ZONE armed",
-                         f"Top {_fp(p['top'])} dipped {p['dip']:.0f}%. Short limit {_fp(px_round(p['trigger'], False))} "
-                         f"(12% under the top), stop if filled {_fp(px_round(p['stop'], True))}. Zone {p['ext']:.0f}% above VWAP."
-                         + (f"\nNo order: {why}" if why else ""), "trade", bs=bs, chart=True, critical=True)
-        va = e.get("vac_armed")
-        if va and not self._vac_open():
-            va = None                                    # after VAC_LAST_ENTRY_TIME the trap can no longer trade
-        sk = e.get("vac_skip")
-        if sk and ("S", sk["key"]) not in bs.seen_armed and not sk["reason"].startswith("outside"):
-            bs.seen_armed.add(("S", sk["key"]))
-            if any(w in sk["reason"] for w in ("climax", "staircase", "stop-out")):
-                self._notify(f"\u23ED {bs.sym}: vacuum signal skipped", sk["reason"][:300], "dim", bs=bs, chart=True,
-                             marks=[{"t": sk["t"], "price": sk["price"], "text": "SKIP", "color": "#9598a1"}])
-        if va and ("V", va["arm_idx"]) not in bs.seen_armed and bs.phase == "idle":
-            bs.seen_armed.add(("V", va["arm_idx"]))
-            vw = e.get("vwap")
-            self._notify(f"\U0001F9F2 {bs.sym}: VACUUM trap armed",
-                         f"High {(va['peak'] / vw - 1) * 100:.0f}% above VWAP on dying volume. Short signal when a candle closes "
-                         f"under {_fp(va['trigger'])} ({STRAT.VAC_PULLBACK_PCT:g}% under the peak {_fp(va['peak'])})."
-                         if vw else "", "trade", bs=bs, chart=True, critical=True)
-
-    def _vac_open(self):
-        """Vacuum shorts can still fill now (before VAC_LAST_ENTRY_TIME)."""
-        return getattr(STRAT, "VACUUM_ENABLED", False) and \
-            self._wall() % 86400 <= _secs(getattr(STRAT, "VAC_LAST_ENTRY_TIME", "15:30"))
+        bs.eng = jr_eng_info(frame, has_rth, prior)
+        if jr_ready() and prior:
+            try:
+                self._jr_feed(bs, frame, dn, prior)
+            except Exception:
+                log.exception("jay-read feed %s", bs.sym)
 
     def _drop_old_auto(self):
         """New day: symbols the scanner added on an earlier day leave the watchlist (unless an order / short is open)."""
@@ -733,9 +660,9 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
             self._log(f"short scanner: removed yesterday's symbols {', '.join(gone)}")
         self.settings.set("auto_syms", a)
 
-    # ---------------- 3.7.0 / 3.9.0: the Jay-read + max squeeze shorts (jay_read_short.py / max_squeeze_short.py) ---------
+    # ---------------- the Jay-read shorts (jay_read_2_short.py / jay_read_short.py) ----------------
     def _jr_feed(self, bs, frame, dn, prior):
-        """Feed today's closed candles (with trades) to the symbol's short book (Jay-read + max squeeze) once each. A new
+        """Feed today's closed candles (with trades) to the symbol's short book (Jay-read 2 / v1.2) once each. A new
         book (warmup with every candle since 04:00) when the symbol is added / the day starts. If IB revised a candle
         already fed, the chart reads are rebuilt from the candles (the trade state is kept); only new candles produce
         events."""
@@ -748,8 +675,8 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
             bs.jr.warmup(rows)
             bs.jr_fp = fp
             self._jr_restore(bs)
-            names = " + ".join(("Jay-read 2" if type(p).__name__ == "JayRead2Short" else "max squeeze"
-                                if p.cfg.get("CODE") == "SQ" else "Jay-read v1.2") for p in getattr(bs.jr, "parts", [bs.jr]))
+            names = " + ".join(("Jay-read 2" if type(p).__name__ == "JayRead2Short" else "Jay-read v1.2")
+                               for p in getattr(bs.jr, "parts", [bs.jr]))
             self._log(f"{bs.sym}: {names} read started ({len(rows)} candles "
                       f"since 04:00, prior close {_fp(prior)})")
             self._jr_context(bs)
@@ -794,7 +721,7 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
                 self._log(f"{bs.sym}: {name} signal at {jr_hm(e['time'])} while the bot is busy here ({bs.phase}) - skipped")
                 return
             bs.jr_sig = {"sig": s, "wall": self._wall(), "t": e["time"], "mono": time.monotonic()}
-            k = "sq" if s.get("setup") == "squeeze" else "jr2" if str(s.get("setup")).startswith("jr2") else "jr"
+            k = "jr2" if str(s.get("setup")).startswith("jr2") else "jr"
             self.sig_today[k] = self.sig_today.get(k, 0) + 1
         elif typ == "STOP_MOVED":
             if bs.jr_virtual is not None:               # ALERT_ONLY: the would-be stop moves (no order)
@@ -851,9 +778,8 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
                              "color": "#26a69a", "up": True}])
 
     def _jr_context(self, bs):
-        """Where the reads are right now (status line, pre-locate): bs.jr_ctx = the Jay-read 'momentum broke' numbers,
-        bs.sq_ctx = 3.9.0 the max squeeze numbers once a squeeze is on (up MIN_UP_PCT+, SQUEEZE_PCT+ over the level)."""
-        bs.jr_ctx = bs.sq_ctx = None
+        """Where the read is right now (status line, pre-locate): bs.jr_ctx = the Jay-read 'momentum broke' numbers."""
+        bs.jr_ctx = None
         book = bs.jr
         rd = book.reader if book is not None else None
         if rd is None or not len(rd.o):
@@ -865,18 +791,6 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
         if ctx is not None:
             RH, k_rh, LO, k_lo = ctx
             bs.jr_ctx = {"rh": RH, "low": LO, "crack": 1 - LO / RH, "age": rd.m[-1] - rd.m[k_rh]}
-        sq = getattr(book, "sq", None)
-        if sq is not None and len(sq.reader.o) and sq.reader.pc:
-            try:
-                st = sq.reader.state()
-            except Exception:
-                st = None
-            if st is not None:
-                lvl, _, top, _ = st
-                up = sq.reader.hod / sq.reader.pc - 1.0
-                if up * 100.0 >= sq.cfg["MIN_UP_PCT"] and top >= lvl * (1 + sq.cfg["SQUEEZE_PCT"] / 100.0):
-                    bs.sq_ctx = {"level": lvl, "top": top, "sq": top / lvl - 1.0, "up": up,
-                                 "stop": top * (1 + sq.cfg["STOP_OVER_TOP_PCT"] / 100.0)}
 
     def _jr_restore(self, bs):
         """App restarted mid-day: today's short trades of this symbol from the journal. A stop-out = done for the day (both
@@ -890,7 +804,7 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
             return
         today = str(self.now().date())
         mine = rows[(rows["date"] == today) & (rows["symbol"] == bs.sym)
-                    & rows["setup"].isin(["JR_A", "JR_B", "SQ", "JR2_G", "JR2_S"])]
+                    & rows["setup"].isin(["JR_A", "JR_B", "JR2_G", "JR2_S"])]
         if not len(mine):
             return
         book = bs.jr
@@ -900,8 +814,6 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
             parts.append((("JR2_G", "JR2_S"), book.jr2, "Jay-read 2"))
         if getattr(book, "jr2", None) is None or getattr(book, "jr1", None) is not None:
             parts.append((("JR_A", "JR_B"), jr_part(book, "rollover"), "Jay-read"))
-        if getattr(book, "sq", None) is not None:
-            parts.append((("SQ",), book.sq, "max squeeze"))
         for codes, part, label in parts:
             m = mine[mine["setup"].isin(codes)]
             if not len(m):
@@ -951,12 +863,7 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
         return f"{lb} {d}: {off:.0f}% under the high {_fp(rd.rh)} (needs a {M.MIN_CRACK_PCT:g}% crack)", "watch"
 
     def _jr_levels(self, s, px=None):
-        if s.get("setup") == "squeeze":                  # 3.9.0: the max squeeze short
-            lv = [{"price": px_round(s["stop"], True), "color": "#f23645", "style": "dash", "title": "stop"},
-                  {"price": s["top"], "color": "#ffd23f", "style": "dot", "title": "squeeze top"},
-                  {"price": s["level"], "color": "#3b82f6", "style": "dot", "title": "swing high it broke"},
-                  {"price": s["vwap"], "color": "#ff9800", "style": "dot", "title": "VWAP"}]
-        elif str(s.get("setup")).startswith("jr2"):     # 3.13.0: Jay-read 2
+        if str(s.get("setup")).startswith("jr2"):       # 3.13.0: Jay-read 2
             lv = [{"price": px_round(s["stop"], True), "color": "#f23645", "style": "dash", "title": "stop"},
                   {"price": s["rth_high"], "color": "#9598a1", "style": "dot", "title": "RTH high"},
                   {"price": s["bounce_high"], "color": "#3b82f6", "style": "dot", "title": "bounce high"},
@@ -974,7 +881,7 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
         return lv
 
     async def _jr_maybe_enter(self, bs):
-        """A short SIGNAL (Jay-read or max squeeze): post it with the read, then (unless alert-only / a guard says no)
+        """A short SIGNAL (Jay-read 2 / v1.2): post it with the read, then (unless alert-only / a guard says no)
         locate and short now - or, with no locate within MAX_LOCATE_PCT yet, keep searching (3.9.0) and short once
         located."""
         sg = bs.jr_sig
@@ -984,7 +891,6 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
         if bs.hunt is not None and bs.hunt.get("mode") == "pre":
             bs.hunt = None                               # the signal takes over the locate search
         jr, s = bs.jr, sg["sig"]
-        sq = s.get("setup") == "squeeze"
         cfg = jr_part(jr, s["setup"]).cfg
         alert = alert_only_for(s["setup"])
         name = JR_SETUP_NAME.get(s["setup"], s["setup"])
@@ -1002,6 +908,8 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
                    or ("the premarket long still holds it" if self.long_holds(bs.sym) else ""))
         else:                                            # alert only: what would still block the real short
             why = ("halted" if bs.halted else "") or ("the premarket long still holds it" if self.long_holds(bs.sym) else "")
+        if not why and bs.sym in self.short_stop:       # 3.15: the STOP button
+            why = "STOP is on for this stock (you) - skipped"
         if not why and SHORT_MIN_PRICE and s["close"] < SHORT_MIN_PRICE:     # 3.15: as the backtest (LABT 11-05)
             why = f"signal price {_fp(s['close'])} under ${SHORT_MIN_PRICE:.2f}"
         if not why:
@@ -1037,7 +945,7 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
         mk = [{"t": calendar.timegm(sg["t"].timetuple()) // 60 * 60, "price": s["close"], "text": "SIGNAL",
                "color": "#e040fb"}]
         if alert or why:                                 # 3.10: SIGNAL · NOT TRADED - and why, in one line
-            mk_= "sq" if sq else "jr2" if str(s["setup"]).startswith("jr2") else "jr"      # 3.13.0
+            mk_ = "jr2" if str(s["setup"]).startswith("jr2") else "jr"      # 3.13.0
             how = ("Why: the " + MODE_NAMES[mk_] + " is set to Alert only - no order.\n"
                    "Turn it on in the app: menu → Trading mode → " + MODE_NAMES[mk_]
                    + " → Trading." if alert and not why else f"Why: {why}.")
@@ -1056,8 +964,8 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
                          levels=self._jr_levels(s, last), marks=mk,
                          fields=[("Short", f"{qty:,} sh\nlimit {_fp(px_round(last * (1 - JR_ENTRY_SLIP_PCT / 100.0), up=False))}",
                                   True),
-                                 ("Stop", f"{_fp(stop_r)}\n({'top' if sq else 'high of day' if s.get('stop_basis') == 'hod' else 'high'} +"
-                                          f"{(SQ.STOP_OVER_TOP_PCT if sq else s.get('stop_pct', cfg.get('HOD_STOP_PCT', 3))):g}%)", True),
+                                 ("Stop", f"{_fp(stop_r)}\n({'high of day' if s.get('stop_basis') == 'hod' else 'high'} +"
+                                          f"{s.get('stop_pct', cfg.get('HOD_STOP_PCT', 3)):g}%)", True),
                                  ("Risk", f"{_money(risk * max(qty, 0))}\n({risk / last * 100:.0f}% over entry)"
                                   + (f"\n{cap_note}" if cap_note else ""), True)] + lock_f)
         bs.jr_plan = None
@@ -1110,7 +1018,7 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
         try:
             eod = cfg.get("EOD_COVER_TIME") or JR.EOD_COVER_TIME
             eod_min = _secs(eod) // 60 if eod else 955
-            k = "sq" if s.get("setup") == "squeeze" else "jr2" if str(s.get("setup")).startswith("jr2") else "jr"
+            k = "jr2" if str(s.get("setup")).startswith("jr2") else "jr"
             if qty is None or qty < 1:
                 qty, _ = self._jr_size(last, s["stop"])
             rec = self.missed.short(bs.sym, MODE_NAMES.get(k, k), name, last, s["stop"], max(qty, 0), why, wall, cfg, eod_min)
@@ -1250,26 +1158,21 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
             self._hunt_end(bs, h, bs.loc_note or "no more locate requests today")
 
     async def _jr_pre_start(self, bs, req):
-        """The read says a short may come (Jay-read: momentum broke / max squeeze: a squeeze is on): locate now so the
+        """The read says a short may come (momentum broke): locate now so the
         shares are ready; no offer within the cap = the search goes on (LOCATE_RETRY_SEC)."""
         if self.can_open():
             return
         ref = req["ref"]
         qty = self._size(ref)
-        what = "max squeeze forming" if req.get("sq") and not req.get("jr") else "momentum broke - Jay-read setup forming"
+        what = "momentum broke - Jay-read setup forming"
         if not (self.is_paper() and not LOCATE_ON_PAPER) and not bs.etb:
             have = await self._inventory(bs)              # yours (the locate window / ZeroPro / web) or the bot's
             if self._enough_located(have, qty):
                 self._notify(f"⚡ {bs.sym}: {what}", f"{have:,} shares are already located in the account (size {qty:,}) - "
                              f"they are used, no new locate.", "trade", bs=bs, chart=True)
                 return
-        if req.get("jr"):
-            c = req["jr"]
-            detail = f"High {_fp(c['rh'])} ({c['age']} min old), cracked -{c['crack'] * 100:.0f}% to {_fp(c['low'])}."
-        else:
-            c = req["sq"]
-            detail = (f"Up +{c['up'] * 100:.0f}%, squeezed +{c['sq'] * 100:.0f}% over the swing high {_fp(c['level'])} to "
-                      f"{_fp(c['top'])} - a red candle up there is the max squeeze short (stop {_fp(c['stop'])}).")
+        c = req["jr"]
+        detail = f"High {_fp(c['rh'])} ({c['age']} min old), cracked -{c['crack'] * 100:.0f}% to {_fp(c['low'])}."
         self._notify(f"⚡ {bs.sym}: {what}", detail + f" Getting the locate now so the shares are ready before a signal "
                      f"(reference price {_fp(ref)}).", "trade", bs=bs, chart=True, critical=True)
         mono = time.monotonic()
@@ -1395,9 +1298,9 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
             self._vf_next = mono + 600.0
             if not days:
                 return
-            import lh_backtest
-            vault = lh_backtest.settings().get("vault", "")
-            if not vault and lh_backtest._cloud() is not None:       # 3.14: the vault is in Turso: this PC's replica
+            import kestrel_backtest
+            vault = kestrel_backtest.settings().get("vault", "")
+            if not vault and kestrel_backtest._cloud() is not None:       # 3.14: the vault is in Turso: this PC's replica
                 import turso_vault
                 vault = turso_vault.default_replica()
             if not vault:
@@ -1407,7 +1310,7 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
                 return
             import multiprocessing as mp
             self._vf_proc = mp.get_context("spawn").Process(target=VF.run_feed, args=(DATA_DIR, vault, IB_HOST, IB_PORT, days),
-                                                            daemon=True, name="lh-vault-feed")
+                                                            daemon=True, name="kestrel-vault-feed")
             self._vf_proc.start()
             self._log(f"vault feed: fetching {len(days)} earlier day(s) into the data vault ({', '.join(days)}) - "
                       f"separate process, read-only IB client {VF.FEED_CLIENT_ID}")
@@ -1428,13 +1331,18 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
         if self.day != now.date():
             self.day = now.date()
             self.trades_today = 0
-            self.sig_today = {"jr2": 0, "jr": 0, "sq": 0}
+            self.sig_today = {"jr2": 0, "jr": 0}
+            try:                                         # 3.15: STOP stays on for the rest of the day (a restart keeps it)
+                ss = self.settings.get("short_stop") or {}
+                self.short_stop = set(ss.get("syms") or []) if ss.get("day") == str(now.date()) else set()
+            except Exception:
+                self.short_stop = set()
             self.flags = set()
             self.located = set()
             self.size_base, self.size_note, self.size_closed, self.rebase_at = None, "", None, None
             self.order_seen = {k: v for k, v in self.order_seen.items() if k in self.orders_raw}
             for bs in self.syms.values():
-                bs.skip_top, bs.trades, bs.eng = {}, [], None
+                bs.trades, bs.eng = [], None
                 bs.reset_day()
             self.scan_seen = set()
             self.jr_alert_trades = []
@@ -1500,7 +1408,7 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
                 await self._run_engine(bs, cur_min)
             self._check_prelocate(bs, secs)
         # 3.7: auto short-scanner (Jay-read mode)
-        if (jr_mode() and SHORT_SCANNER and weekday and ib_ok and mono >= self.next_scan
+        if (SHORT_SCANNER and weekday and ib_ok and mono >= self.next_scan
                 and _secs(SHORT_SCAN_START) <= secs < _secs(SHORT_SCAN_END)):
             self.next_scan = mono + SHORT_SCAN_INTERVAL_SEC
             self.loop.create_task(self._short_scan())
@@ -1522,7 +1430,7 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
             self._notify("TradeZero answers again", "Every order and position is checked again - nothing missed.", "ok",
                          tag="TRADEZERO BACK", who="System")
         # the close
-        if (weekday and jr_mode() and JR_EOD_COVER_TIME and "jr_eod" not in self.flags
+        if (weekday and JR_EOD_COVER_TIME and "jr_eod" not in self.flags
                 and _secs(JR_EOD_COVER_TIME) + 15 <= secs < K.rth_e):
             self.flags.add("jr_eod")                     # 3.7: backstop if the EOD candle event did not come (data gap)
             for bs in self.syms.values():
@@ -1576,6 +1484,12 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
             self.tbt.sync(self.be.ib, tickfeed.wanted_for(self) if TICK_BY_TICK_MAX > 0 else [])
         except Exception:
             log.exception("tick-by-tick")
+        try:                                             # 3.15: Time & Sales follows the slot of the open chart
+            tp = getattr(self.be, "tape", None)
+            if tp is not None:
+                tp.refresh(self.be, getattr(self, "tbt", None))
+        except Exception:
+            log.exception("time and sales")
 
     async def _step(self, bs):
         if bs.busy:
@@ -1585,15 +1499,9 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
         bs.busy = True                                   # the reopen order never waits for a step)
         try:
             if bs.phase == "idle":
-                await self._maybe_enter(bs)
-                if jr_mode():                            # 3.9.0: the locate search (before / after a signal)
-                    if bs.phase == "idle":
-                        await self._jr_hunt(bs)
-                elif bs.pre_req:
-                    req, bs.pre_req = bs.pre_req, None
-                    if bs.phase == "idle" and time.monotonic() - req["mono"] <= 30:     # still fresh: locate now
-                        bs.pre_done = True                                             # once a day
-                        await self._prelocate(bs, req)
+                await self._jr_maybe_enter(bs)
+                if bs.phase == "idle":                   # 3.9.0: the locate search (before / after a signal)
+                    await self._jr_hunt(bs)
             elif bs.phase == "working":
                 await self._manage_entry(bs)
             elif bs.phase == "short":
@@ -1850,135 +1758,29 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
         """v3.5: the premarket long still has shares (or an order step) in sym - no short on it until it is sold."""
         return self.longbot is not None and self.longbot.holds(sym)
 
-    async def _maybe_enter(self, bs):
-        if jr_mode():                                   # 3.7.0: the Jay-read short (v16 parked)
-            await self._jr_maybe_enter(bs)
-            return
-        e = bs.eng
-        if not e or bs.st is None or self.can_open() or bs.halted or self._orphan_entry(bs.sym):
-            return
-        if self.long_holds(bs.sym):
-            return                                      # the premarket long is still in this stock
-        v = e.get("vac")
-        if v and v["key"] not in bs.used_vac:
-            bs.used_vac.add(v["key"])
-            await self._enter_vacuum(bs, v)
-            return
-        p = e.get("pending")
-        if not p or p["top"] in bs.skip_top:
-            return
-        last = bs.last_px
-        if last is None or last >= p["zone_hi"]:
-            return                                      # already past the zone: the engine wants a new dip first
-        wall = self._wall()
-        if wall % 86400 > _secs(STRAT.LAST_ENTRY_TIME) + 59:
-            return
-        limit_px = px_round(p["trigger"], up=False)
-        qty = self._size(limit_px)
-        if qty < 1:
-            bs.skip_top[p["top"]] = "position size too small"
-            return
-        bs.phase = "locating"
-        self._status(bs)
-        try:
-            ok, qty, loc_px = await self._get_locate(bs, qty, limit_px, "entry")
-        except TZError as exc:
-            ok, loc_px = False, 0.0
-            self._notify(f"❌ {bs.sym}: locate error", str(exc), "err")
-        if not ok:
-            bs.skip_top[p["top"]] = "no locate"
-            bs.phase = "idle"
-            return
-        p2 = (bs.eng or {}).get("pending")
-        if not p2 or abs(p2["top"] - p["top"]) > 1e-9 * p["top"] or self.can_open() or (bs.last_px or 0) >= p["zone_hi"]:
-            bs.phase = "idle"
-            self._log(f"{bs.sym}: setup changed while locating - no order")
-            return
-        coid = self._coid(bs.sym, "S")
-        ent = {"coid": coid, "setup": "BOUNCE_ZONE", "top": p["top"], "trigger": p["trigger"], "top_t": p.get("top_t"),
-               "zone_hi": p["zone_hi"], "stop": p["stop"], "qty": qty, "filled": 0, "avg": 0.0, "t": wall,
-               "cancel_sent": False, "locate_px": loc_px, "limit": limit_px, "dip": p["dip"], "ext": p["ext"]}
-        r = await self._place(bs.sym, "entry", "Sell", "Open", "Limit", qty, "Day", limit=limit_px, coid=coid, ctx={"ent": ent})
-        if r.get("orderStatus") == "Rejected":
-            bs.phase = "idle"
-            bs.skip_top[p["top"]] = f"rejected: {r.get('text')}"
-            self._notify(f"❌ {bs.sym}: short limit rejected", str(r.get("text")), "err")
-            return
-        ent["coid"] = r.get("clientOrderId") or coid
-        bs.entry = ent
-        bs.phase = "working"
-        bs.next_poll = time.monotonic() + 0.5
-        self._notify(f"\U0001F7E7 {bs.sym}: BOUNCE short limit placed",
-                     f"Sell short {qty:,} @ {_fp(limit_px)} (resting). Stop if filled {_fp(px_round(p['stop'], True))}.",
-                     "trade", bs=bs, chart=True, critical=True)
-
-    async def _enter_vacuum(self, bs, v):
-        wall = self._wall()
-        last = bs.last_px
-        if last is None or (wall - v["t"] > 150 and not v.get("fresh")):
-            return                                      # stale signal (data gap)
-        if last >= v["stop"]:
-            self._notify(f"{bs.sym}: vacuum signal skipped", f"price {_fp(last)} already at the stop {_fp(v['stop'])}", "warn")
-            return
-        limit_px = px_round(last * (1 - VAC_ENTRY_SLIP_PCT / 100.0), up=False)
-        qty = self._size(limit_px)
-        if qty < 1:
-            return
-        self._notify(f"\U0001F9F2 {bs.sym}: VACUUM short signal",
-                     f"Peak {_fp(v['peak'])} ({v['ext']:.0f}% over VWAP) on dying volume, candle closed {STRAT.VAC_PULLBACK_PCT:g}% "
-                     f"under it. Shorting now, stop {_fp(px_round(v['stop'], True))}.", "trade", bs=bs, chart=True, critical=True,
-                     levels=[{"price": v["peak"], "color": "#e040fb", "style": "dot", "title": "peak"},
-                             {"price": px_round(v["stop"], True), "color": "#f23645", "style": "dash", "title": "stop"}],
-                     marks=[{"t": v["t"], "price": last, "text": "SIGNAL", "color": "#e040fb"}])
-        bs.phase = "locating"
-        self._status(bs)
-        try:
-            ok, qty, loc_px = await self._get_locate(bs, qty, limit_px, "entry")
-        except TZError as exc:
-            ok, loc_px = False, 0.0
-            self._notify(f"❌ {bs.sym}: locate error", str(exc), "err")
-        if not ok or self.can_open():
-            bs.phase = "idle"
-            return
-        last = bs.last_px or last
-        if last >= v["stop"] or (self._wall() - v["t"] > 150 and not v.get("fresh")):
-            bs.phase = "idle"
-            self._notify(f"{bs.sym}: vacuum entry dropped", "the price moved too far while locating", "warn")
-            return
-        limit_px = px_round(last * (1 - VAC_ENTRY_SLIP_PCT / 100.0), up=False)
-        coid = self._coid(bs.sym, "S")
-        ent = {"coid": coid, "setup": "VACUUM", "top": v["peak"], "trigger": v["trigger"],
-               "zone_hi": None, "stop": v["stop"], "qty": qty, "filled": 0, "avg": 0.0, "t": self._wall(),
-               "cancel_sent": False, "locate_px": loc_px, "limit": limit_px, "dip": 0.0, "ext": v["ext"],
-               "deadline": time.monotonic() + VAC_ENTRY_TIMEOUT_SEC, "vac_key": v["key"], "vac_t": v.get("vkey")}
-        r = await self._place(bs.sym, "entry", "Sell", "Open", "Limit", qty, "Day", limit=limit_px, coid=coid, ctx={"ent": ent})
-        if r.get("orderStatus") == "Rejected":
-            bs.phase = "idle"
-            self._notify(f"❌ {bs.sym}: vacuum short rejected", str(r.get("text")), "err")
-            return
-        ent["coid"] = r.get("clientOrderId") or coid
-        bs.entry = ent
-        bs.phase = "working"
-        bs.next_poll = time.monotonic() + 0.4
-        self._notify(f"\U0001F7E7 {bs.sym}: VACUUM short order placed",
-                     f"Sell short {qty:,} @ {_fp(limit_px)} (marketable limit, {VAC_ENTRY_SLIP_PCT:g}% under the last price). "
-                     f"Stop if filled {_fp(px_round(v['stop'], True))}.", "trade", bs=bs, chart=True, critical=True)
-
     def _skip_setup(self, bs, ent):
         """You cancelled the bot's entry: that trade is ignored - the bot and the engine look for the next setup."""
-        if ent.get("setup") == "VACUUM":
-            if ent.get("vac_key"):
-                bs.used_vac.add(ent["vac_key"])
-            if ent.get("vac_t"):
-                bs.void.add(("V", ent["vac_t"]))
-        else:
-            if ent.get("top") is not None:
-                bs.skip_top[ent["top"]] = "cancelled by you"
-            if ent.get("top_t") is not None:
-                bs.void.add(("B", int(ent["top_t"])))
-        bs.eng_key = None                                # run the engine again right away
+        bs.eng_key = None                                # read the chart again right away
 
     # ---------------- 3.12: halts, the stop that must be at TradeZero, your own stop ----------------
+    async def set_short_stop(self, sym, on):
+        """3.15: the STOP button (Scanner card / watchlist): while on, every short signal on this stock is skipped (and not
+        taken later - the next signal after you turn it off is). Today only; it is off again tomorrow."""
+        sym = str(sym or "").upper().strip()
+        if not sym:
+            return
+        if on:
+            self.short_stop.add(sym)
+        else:
+            self.short_stop.discard(sym)
+        try:
+            self.settings.set("short_stop", {"day": str(self.now().date()), "syms": sorted(self.short_stop)})
+        except Exception:
+            log.exception("short stop save")
+        self._log(f"{sym}: STOP " + ("on - its short signals are skipped until you turn it off" if on
+                                     else "off - the next short signal is traded"), "warn" if on else "info")
+        self._push(force=True)
+
     def _in_position(self, bs):
         ent = bs.entry or {}
         return int(ent.get("filled") or 0) > 0 and bs.phase in ("short", "covering", "manual")
@@ -1995,6 +1797,10 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
         traded = vol is not None and bs.vol_seen is not None and vol > bs.vol_seen
         if vol is not None and (bs.vol_seen is None or vol > bs.vol_seen):
             bs.vol_seen = vol
+        if traded:
+            bs.last_trade_mono = time.monotonic()
+        if not flag:
+            bs.halt_flag_clear = True
         h = bs.halt
         if h is None:
             if px:
@@ -2006,8 +1812,8 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
                 bs.bid = bid
             if ask:
                 bs.ask = ask
-            if flag:
-                self._halt_start(bs, "IB")
+            if flag and (bs.halt_flag_clear or time.monotonic() - bs.last_trade_mono >= HALT_STALE_FLAG_SEC):
+                self._halt_start(bs, "IB")      # 3.15: IB's flag still up from the halt that just reopened on a trade = same halt
             elif bs.halted:
                 bs.halted = False
             return
@@ -2291,16 +2097,19 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
 
     def _push(self, force=False):
         rows = []
+        tbt_on = set(self.tbt.names()) if getattr(self, "tbt", None) is not None else set()   # 3.15: watchlist T&S tag
         for bs in self.syms.values():
             if (bs.phase == "idle" and not bs.busy) or bs.halt is not None:
                 self._status(bs)
             e = bs.eng or {}
             ent = bs.entry or {}
             rows.append({"sym": bs.sym, "last": _f(bs.last_px), "gap": _f(e.get("gap"), 1), "gapOk": bool(e.get("gapOk")),
+                         "tbt": bs.sym in tbt_on,
                          "status": bs.status, "kind": bs.kind, "halted": bs.halted, "phase": bs.phase,
                          "hdir": (bs.halt or {}).get("dir", ""), "hpx": _f((bs.halt or {}).get("px")),
                          "ht": (bs.halt or {}).get("hms", ""),
-                         "stop": _f(ent.get("stop_live") or ent.get("stop")) if bs.phase == "short" else None})
+                         "stop": _f(ent.get("stop_live") or ent.get("stop")) if bs.phase == "short" else None,
+                         "sstop": bs.sym in self.short_stop})
         info = self.acc_info
         pos, fills, closed = self._ui_positions()
         unreal = sum(p["unreal"] for p in pos if p.get("unreal") is not None)
@@ -2309,10 +2118,10 @@ class Bot(_BotStatus, _BotOrders, _BotStopsHalts, _BotSizing, _BotReconcile, _Bo
                                                   "unreal": _f(unreal, 2) if pos else 0.0},
                    "modes": {k: mode(k) for k in MODE_KEYS},
                    "modeOn": {"long": bool(LONG_PREMARKET and self.longbot is not None), "jr2": jr2_ready(),
-                              "jr": jr_mode() and JR is not None, "sq": sq_on()},
+                              "jr": JR is not None},
                    "pos": pos, "fills": fills, "closed": closed,
                    "auto": self.auto, "liveBlocked": self.live_blocked(), "reason": self.can_open() if self.auto else "",
-                   "rows": rows, "trades": self.trades_today, "maxTrades": MAX_BOT_TRADES_PER_DAY,
+                   "rows": rows, "sstops": sorted(self.short_stop), "trades": self.trades_today, "maxTrades": MAX_BOT_TRADES_PER_DAY,
                    "size": (f"{ACCOUNT_PCT:g}% of the base {_money(self.size_base)} = "
                             f"{_money(min(self.size_base * ACCOUNT_PCT / 100.0, MAX_POSITION_USD))} a short ({self.size_note})"
                             if self.size_base else f"{ACCOUNT_PCT:g}% of equity (max ${MAX_POSITION_USD:,.0f})"),

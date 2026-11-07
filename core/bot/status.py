@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LH Short Bot - Bot: logging, Discord messages, end-of-day summary, heartbeat, goodbye.
+"""Kestrel - Bot: logging, Discord messages, end-of-day summary, heartbeat, goodbye.
 Part of the Bot class (core/bot/bot_core.py): main.py runs this file in its own namespace. Code moved here unchanged."""
 
 class _BotStatus:
@@ -92,16 +92,10 @@ class _BotStatus:
             stopped = any(p.done and p._stop_rh is not None for p in getattr(bs.jr, "parts", [bs.jr]))
             return f"Shorts: done for the day ({'stopped out' if stopped else 'max trades'})", "done"
         txt, kind = self._jr_read_text(bs, rd)
-        sq = getattr(bs.jr, "sq", None)
-        if sq is not None and not jr_part_finished(sq) and bs.sq_ctx and (sq.reader.m[-1] <= JR._min(sq.cfg["SIGNAL_END"])):
-            c = bs.sq_ctx
-            sq_txt = (f"SQUEEZE +{c['sq'] * 100:.0f}% over {_fp(c['level'])} (top {_fp(c['top'])}): short the first red "
-                      f"candle at the top")
-            return (sq_txt + " | " + txt if kind in ("dim", "done", "watch") else txt + " | " + sq_txt), "armed"
         return txt, kind
 
     async def _eod(self):
-        self._notify(f"{STRAT.EOD_COVER_TIME} - covering every bot short", "", "warn")
+        self._notify(f"{EOD_COVER_TIME} - covering every bot short", "", "warn")
         for bs in list(self.syms.values()):
             if bs.phase in ("working", "short", "locating", "manual"):
                 await self._flatten_one(bs, "EOD")
@@ -194,27 +188,18 @@ class _BotStatus:
                      + ("  ·  SHORTS STILL OPEN" if opens else ""), who="System")
 
     def _heartbeat(self):
-        """3.10: STATUS every DISCORD_HEARTBEAT_MIN - day P&L, what trades, what is open, what is watched, connections."""
+        """STATUS every DISCORD_HEARTBEAT_MIN - only what is open, what is watched and the connections (2026-11-06: no
+        strategy modes / what is off - a mode change has its own message)."""
         hm = f"{self.now():%H:%M}"
         opens = self._open_lines(brief=True)
-        nt = not_trading()
-        if not self.auto:
-            title, kind = "Auto-trade is OFF - no strategy places orders", "warn"
-        elif nt:
-            title = (", ".join(MODE_NAMES[k] for k, _ in nt) + " " + ("is" if len(nt) == 1 else "are") + " "
-                     + " / ".join(sorted({MODE_TEXT[m].upper() for _, m in nt})) + " - no orders")
-            kind = "warn"
-        else:
-            title = (f"Day {_pm(self.day_pnl)}  ·  {len(opens)} open  ·  everything trading" if opens
-                     else f"Day {_pm(self.day_pnl)}  ·  nothing open  ·  everything trading")
-            kind = "dim"
+        title = f"{len(opens)} open" if opens else "Nothing open"
+        kind = "dim"
         ib = self.be.ib
         conns = (f"IB Gateway {'OK' if ib is not None and ib.isConnected() else 'DOWN'}  ·  "
                  f"{('TradeZero ' + self.acc_type + ' OK') if self.tz_ready() else self.tz_status.get('text', 'TradeZero -')}"
                  f"  ·  Discord OK")
         watch = "\n".join(f"{b.sym:<6} {_fp(b.last_px):>8}  {b.status}"[:150] for b in self.syms.values()) or "nothing"
-        f = [("Trading", ("Auto-trade OFF  ·  " if not self.auto else "") + modes_text(short=True), False),
-             ("Open", "\n".join(opens) if opens else "nothing", False),
+        f = [("Open", "\n".join(opens) if opens else "nothing", False),
              ("Watching", f"```{watch[:950]}```", False),
              ("Connections", conns, False)]
         self._notify(title, "", kind, fields=f, tag=f"STATUS {hm}  ·  EVERY {DISCORD_HEARTBEAT_MIN} MIN", who="System")
@@ -283,7 +268,7 @@ class _BotStatus:
             bs.status, bs.kind = "Loading candles..." if self.be.ib is not None and self.be.ib.isConnected() else "Waiting for IB Gateway...", "dim"
         elif not e:
             bs.status, bs.kind = "Starting...", "dim"
-        elif jr_mode():                                  # 3.7: the Jay-read read
+        else:                                            # the Jay-read read
             done = f"{len(bs.trades)} trade{'s' if len(bs.trades) != 1 else ''} {sum(t['R'] for t in bs.trades):+.2f}R - " if bs.trades else ""
             if not jr_ready():
                 bs.status, bs.kind = done + "Jay-read short not loaded - no shorts", "err"
@@ -294,40 +279,10 @@ class _BotStatus:
                 bs.kind = "short"
             else:
                 txt, kind = self._jr_status_text(bs)
-                live = (bs.jr_ctx and mode("jr") == "trading") or (bs.sq_ctx and sq_on() and mode("sq") == "trading")
+                live = bs.jr_ctx and mode("jr") == "trading"
                 why = (self.can_open() if live and bs.hunt is None else "") or ""
-                alert = (bs.jr_ctx and mode("jr") == "alert") and not (bs.sq_ctx and sq_on() and mode("sq") == "trading")
-                off = (bs.jr_ctx and mode("jr") == "off") and not (bs.sq_ctx and sq_on() and mode("sq") != "off")
+                alert = bs.jr_ctx and mode("jr") == "alert"
+                off = bs.jr_ctx and mode("jr") == "off"
                 bs.status = (done + txt + (" (alert only)" if alert else " (strategy off)" if off else "")
                              + (f" - {why}" if why else ""))
                 bs.kind = kind
-        elif e.get("pending"):
-            p = e["pending"]
-            why = (self.can_open() or bs.skip_top.get(p["top"], "") or ("halted" if bs.halted else "")
-                   or ("premarket long still open" if self.long_holds(bs.sym) else ""))
-            bs.status = f"ARMED bounce short {_fp(px_round(p['trigger'], False))} stop {_fp(px_round(p['stop'], True))}" + (f" - {why}" if why else "")
-            bs.kind = "armed"
-        elif e.get("vac_armed") and self._vac_open():
-            va = e["vac_armed"]
-            bs.status, bs.kind = f"VACUUM trap armed - short below {_fp(va['trigger'])} (peak {_fp(va['peak'])})", "armed"
-        else:
-            done = f"{len(bs.trades)} trade{'s' if len(bs.trades) != 1 else ''} {sum(t['R'] for t in bs.trades):+.2f}R - " if bs.trades else ""
-            if e.get("block") == "pre-market":
-                bs.status, bs.kind = done + "Pre-market", "dim"
-            elif e.get("gap") is not None and not e.get("gapOk"):
-                if getattr(STRAT, "VACUUM_ENABLED", False) and not getattr(STRAT, "VAC_REQUIRE_GAP", True) and self._vac_open():
-                    hod, last, vw = e.get("hod"), bs.last_px, e.get("vwap")
-                    ext = f", {(last / vw - 1) * 100:+.0f}% vs VWAP" if vw and last else ""
-                    bs.status, bs.kind = done + f"Gap {e['gap']:+.0f}% - vacuum only (no bounce){ext}", "watch"
-                else:
-                    bs.status, bs.kind = done + f"Gap only {e['gap']:+.0f}% - no setup today", "dim"
-            else:
-                hod, last, vw = e.get("hod"), bs.last_px, e.get("vwap")
-                off = f"{(1 - last / hod) * 100:.0f}% under HOD" if hod and last else ""
-                ext = f", {(last / vw - 1) * 100:+.0f}% vs VWAP" if vw and last else ""
-                blk = e.get("block") or ""
-                if "max" in blk or "after" in blk:
-                    bs.status = done + blk
-                else:
-                    bs.status = done + "Watching" + (f" - {off}{ext}" if off else "")
-                bs.kind = "done" if bs.trades else "watch"

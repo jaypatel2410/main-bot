@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LH Short Bot - JsApi: what the app window calls (screens, journal, favorites, alerts, backtest).
+"""Kestrel - JsApi: what the app window calls (screens, journal, favorites, alerts, backtest).
 Part of main.py: main.py runs this file in its OWN namespace (same names, same settings), so the code works exactly
 as when it was one file. Do not run it on its own - start main.py."""
 class JsApi:
@@ -20,19 +20,11 @@ class JsApi:
             "status": self._backend.status,
             "info": {"app": f"{APP_NAME} {APP_VERSION}", "strategy": strategy_label(),
                      "ib": f"{IB_HOST}:{IB_PORT}", "history": HISTORY_DURATION, "histMax": HISTORY_MAX_1M_BARS,
-                     "minUp": STRAT.MIN_GAP_PCT, "minGap": STRAT.MIN_GAP_PCT, "dip": STRAT.MIN_DIP_PCT,
-                     "zoneFar": STRAT.ZONE_FAR_PCT, "zoneNear": STRAT.ZONE_NEAR_PCT, "stopTop": STRAT.STOP_ABOVE_TOP_PCT,
-                     "vwapMin": STRAT.MIN_ZONE_ABOVE_VWAP_PCT, "entryStart": STRAT.ENTRY_START,
-                     "lastEntry": STRAT.LAST_ENTRY_TIME, "eod": STRAT.EOD_COVER_TIME,
-                     "fee": float(getattr(STRAT, "LOCATE_FEE_PCT", 0.0)), "minVol": float(getattr(STRAT, "MIN_DAY_VOLUME", 0)),
+                     "eod": JR_EOD_COVER_TIME or EOD_COVER_TIME,
                      "bot": {"size": f"{ACCOUNT_PCT:g}% of equity", "loc": MAX_LOCATE_PCT,
                              "maxTrades": MAX_BOT_TRADES_PER_DAY, "live": bool(ALLOW_LIVE_TRADING)},
-                     "short": "jay_read" if jr_mode() else "v16", "jr": jr_info(), "btref": BT_REF,
-                     "scanUp": SHORT_SCAN_MIN_UP_PCT, "scanOn": bool(SHORT_SCANNER),
-                     "vac": {"on": bool(getattr(STRAT, "VACUUM_ENABLED", False)),
-                             "stretch": getattr(STRAT, "VAC_STRETCH_PCT", 15.0), "pull": getattr(STRAT, "VAC_PULLBACK_PCT", 5.0),
-                             "stop": getattr(STRAT, "VAC_STOP_ABOVE_PEAK_PCT", 3.0),
-                             "last": getattr(STRAT, "VAC_LAST_ENTRY_TIME", "15:30")}},
+                     "short": "jay_read", "jr": jr_info(), "btref": BT_REF,
+                     "scanUp": SHORT_SCAN_MIN_UP_PCT, "scanOn": bool(SHORT_SCANNER)},
         }
 
     def load_symbol(self, sym):
@@ -42,6 +34,16 @@ class JsApi:
         self._settings.add_recent(sym)
         self._backend.request_symbol(sym)
         return {"ok": True, "recent": self._settings.get("recent", [])}
+
+    def ts_on(self, on):
+        """3.15: Time & Sales opened / closed."""
+        try:
+            self._backend.tape_obj().set_on(bool(on))
+            self._settings.set("ts", bool(on))
+            return True
+        except Exception:
+            log.exception("ts_on")
+            return False
 
     def save_settings(self, data):
         if not isinstance(data, dict):
@@ -79,6 +81,13 @@ class JsApi:
         b = self._bot()
         if b is not None:
             b.cmd(b.remove, str(sym or "").upper())
+        return True
+
+    def bot_short_stop(self, sym, on):
+        """3.15: the STOP button - skip this stock's short signals today (on) / trade the next one (off)."""
+        b = self._bot()
+        if b is not None:
+            b.cmd(b.set_short_stop, str(sym or "").upper(), bool(on))
         return True
 
     def bot_auto(self, on):
@@ -425,12 +434,12 @@ class JsApi:
             b.loop.call_soon_threadsafe(b._push, True)
         return {"ok": True, "alert": a, "watched": bool(self._backend.last_price(sym))}
 
-    # ---- 3.13: Backtest tab (lh_backtest.py; the run itself is a separate process - trading is never slowed) ----
+    # ---- 3.13: Backtest tab (kestrel_backtest.py; the run itself is a separate process - trading is never slowed) ----
     def _btm(self):
         import importlib
         if _base_dir() not in sys.path:
             sys.path.insert(0, _base_dir())
-        return importlib.import_module("lh_backtest")
+        return importlib.import_module("kestrel_backtest")
 
     def _bt_job(self):
         j = getattr(self, "_btj", None)
@@ -520,7 +529,7 @@ class JsApi:
             favs = [f.get("sym") for f in (self._settings.get("favorites", []) or []) if isinstance(f, dict)]
             path, rid, n = B.new_job(str(k), dict(cfg or {}), favs, bool(update))
             import multiprocessing as mp
-            proc = mp.get_context("spawn").Process(target=B.run_job, args=(path,), daemon=True, name="lh-backtest")
+            proc = mp.get_context("spawn").Process(target=B.run_job, args=(path,), daemon=True, name="kestrel-backtest")
             proc.start()
             self._btj = {"proc": proc, "k": str(k), "rid": rid, "path": path, "state": "running", "folder": B.strat(str(k))["folder"]}
             log.info("backtest %s started: %d ticker-days (run %s)", k, n, rid)
@@ -822,7 +831,7 @@ class JsApi:
         r = self.missed_list(rng)
         if not r.get("ok"):
             return r
-        name = f"lh_missed_{rng}_{self._backend.now_et().date()}.csv"
+        name = f"kestrel_missed_{rng}_{self._backend.now_et().date()}.csv"
         path = None
         try:
             import webview
@@ -867,6 +876,108 @@ class JsApi:
         except Exception as exc:
             log.exception("morning check")
             return {"ok": False, "error": str(exc) or exc.__class__.__name__}
+
+    # ---- 3.15: Settings > In force - every setting the bot uses now and where it comes from ----
+    def settings_in_force(self):
+        """Groups of {name, value, src[, was]}. src: "built" (the app's own settings), "strategy" (a strategy's own
+        default), "yours" (changed by you in Settings > Strategies; was = the default), "app" (picked in the app:
+        trading modes, auto-trade, STOP list, scanner filters), "keys" (set / not set - never the value)."""
+        try:
+            def money(x):
+                return "-" if x is None else f"${x:,.0f}"
+
+            def pct(x):
+                return "off" if x is None else f"{x:g}%"
+
+            def onoff(x):
+                return "On" if x else "Off"
+            b = self._bot()
+            be = self._backend
+            g = []
+            modes = [{"name": MODE_NAMES[k], "value": MODE_TEXT[mode(k)],
+                      "src": "app" if k in MODES else "built"} for k in MODE_KEYS if k != "jr2" or JR2 is not None]
+            sstop = sorted(getattr(b, "short_stop", ()) or ()) if b is not None else []
+            g.append({"name": "Trading", "rows": modes + [
+                {"name": "Auto-trade", "value": onoff(getattr(b, "auto", False)) if b is not None else "-", "src": "app"},
+                {"name": "Live account trading allowed", "value": onoff(ALLOW_LIVE_TRADING), "src": "built"},
+                {"name": "Shorts stopped today", "value": ", ".join(sstop) or "none", "src": "app"}]})
+            rows = [{"name": "Short size", "value": f"{ACCOUNT_PCT:g}% of equity at {SIZE_BASE_TIME}, max {money(MAX_POSITION_USD)}",
+                     "src": "built"}]
+            if LP is not None:
+                rows.append({"name": "Long size", "value": f"{getattr(LP, 'ACCOUNT_PCT', 0):g}% of equity, max "
+                             f"{money(getattr(LP, 'MAX_POSITION_USD', None))}", "src": "strategy"})
+            rows += [{"name": "Max risk per short", "value": money(MAX_RISK_PER_TRADE_USD) if MAX_RISK_PER_TRADE_USD else "no cap", "src": "built"},
+                     {"name": "Max locate cost", "value": f"{MAX_LOCATE_PCT:g}% of the price", "src": "built"},
+                     {"name": "Max bot trades per day", "value": str(MAX_BOT_TRADES_PER_DAY), "src": "built"},
+                     {"name": "Max daily loss", "value": pct(MAX_DAILY_LOSS_PCT), "src": "built"},
+                     {"name": "Min short price", "value": f"${SHORT_MIN_PRICE:g}", "src": "built"},
+                     {"name": "Entry limit under the last price", "value": f"{JR_ENTRY_SLIP_PCT:g}%", "src": "built"}]
+            g.append({"name": "Size and limits", "rows": rows})
+            cfg = getattr(be, "scan_cfg", {}) or {}
+            g.append({"name": "Scanner", "rows": [
+                {"name": "Scanner page: up from prior close", "value": f"{cfg.get('up', 30):g}%+", "src": "app"},
+                {"name": "Scanner page: price", "value": f"${cfg.get('px', 0.5):g}+", "src": "app"},
+                {"name": "Hide: volume today under", "value": f"{SCAN_MIN_DAY_VOLUME:,}" if SCAN_MIN_DAY_VOLUME else "off", "src": "built"},
+                {"name": "Hide: market cap over", "value": money(SCAN_MAX_MARKET_CAP_USD) if SCAN_MAX_MARKET_CAP_USD else "off", "src": "built"},
+                {"name": "Short auto-scanner", "value": (f"up {SHORT_SCAN_MIN_UP_PCT:g}%+, ${SHORT_SCAN_MIN_PRICE:g}+, "
+                                                        f"{SHORT_SCAN_START}-{SHORT_SCAN_END}, every {SHORT_SCAN_INTERVAL_SEC}s")
+                 if SHORT_SCANNER else "Off", "src": "built"},
+                {"name": "Premarket long scanner", "value": (f"up {getattr(LP, 'MIN_GAP_PCT', 0) * 100:g}%+, "
+                                                            f"${getattr(LP, 'MIN_ENTRY_PRICE', 0):g}+, {LP.SCAN_START}-{LP.ENTRY_CUTOFF[:5]}, "
+                                                            f"every {LP.SCAN_INTERVAL_SEC}s") if LP is not None else "-", "src": "strategy"},
+                {"name": "IB scanner requests (one shared scan)", "value": str(getattr(be, "gain_n", 0)), "src": "built"}]})
+            g.append({"name": "Times (ET)", "rows": [
+                {"name": "Short cover", "value": (JR_EOD_COVER_TIME or EOD_COVER_TIME), "src": "built"},
+                {"name": "Close alert", "value": EOD_ALERT_TIME, "src": "built"},
+                {"name": "Auto-cover at the close", "value": onoff(EOD_AUTO_COVER), "src": "built"},
+                {"name": "Premarket long sells", "value": LP.FLATTEN_AT[:5] if LP is not None else "-", "src": "strategy"},
+                {"name": "VWAP from", "value": "04:00 (premarket included)", "src": "built"},
+                {"name": "Auto shutdown after the 16:05 summary", "value": f"{AUTO_SHUTDOWN_SEC // 60:g} min", "src": "built"}]})
+            try:
+                import strat_settings as S
+                data = S.load()
+                for k in S.FIELDS:
+                    if S.module(k) is None:
+                        continue
+                    saved = data.get(k, {})
+                    rows = []
+                    for tab, _note, groups in S.FIELDS[k]["tabs"]:
+                        for _g, fs in groups:
+                            for fl in fs:
+                                key, label, unit = fl[0], fl[1], fl[2]
+                                scale = fl[6] if len(fl) > 6 else 1
+                                d = S.default(k, key)
+
+                                def show(v, unit=unit, scale=scale):
+                                    if v is None:
+                                        return "none"
+                                    if isinstance(v, bool):
+                                        return "On" if v else "Off"
+                                    if isinstance(v, (int, float)):
+                                        if unit == "$M":
+                                            return f"${v / scale:g}M"
+                                        return f"{v / scale:g}{unit if unit in ('%', '') else ' ' + unit}"
+                                    return {"hod": "High of day", "rh": "Regular-hours high", "bh": "Bounce high"}.get(v, str(v))
+                                name = (tab + ": " if len(S.FIELDS[k]["tabs"]) > 1 and tab != "Trade rules" else "") + label
+                                if key in saved and saved[key] != d:
+                                    rows.append({"name": name, "value": show(saved[key]), "src": "yours", "was": show(d)})
+                                else:
+                                    rows.append({"name": name, "value": show(d), "src": "strategy"})
+                    g.append({"name": S.FIELDS[k]["name"], "rows": rows})
+            except Exception:
+                log.exception("settings in force: strategies")
+            es = env_status()
+            have = set(es.get("set") or [])
+            g.append({"name": "Keys", "rows": [
+                {"name": n, "value": "set" if all(x in have for x in ks) else "not set", "src": "keys"}
+                for n, ks in (("TradeZero", ("TZ_API_KEY_ID", "TZ_API_SECRET")), ("Discord", ("DISCORD_WEBHOOK_URL",)),
+                              ("Turso (cloud)", ("TURSO_DATABASE_URL", "TURSO_AUTH_TOKEN")),
+                              ("Alpaca (news)", ("ALPACA_API_KEY", "ALPACA_SECRET_KEY")),
+                              ("Alpha Vantage (float)", ("ALPHAVANTAGE_API_KEY",)))]})
+            return {"ok": True, "groups": g}
+        except Exception as exc:
+            log.exception("settings_in_force")
+            return {"ok": False, "error": str(exc)}
 
     # ---- 3.15: Settings > Strategies ----
     def strat_view(self, k):
@@ -922,7 +1033,7 @@ class JsApi:
         """Save the journal's trades of the range as a CSV (no account column) - asks where."""
         try:
             d = journal_data(str(rng or "month"), today=self._backend.now_et().date(), tz_fills=self._tz_fills(rng))
-            name = f"lh_journal_{d['from']}_to_{d['to']}.csv"
+            name = f"kestrel_journal_{d['from']}_to_{d['to']}.csv"
             path = None
             try:
                 import webview

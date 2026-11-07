@@ -9,7 +9,7 @@ backtests and the chart read the replica exactly as before - it is only a cache 
     python turso_vault.py upload --db C:\\...\\ib_data_vault\\market_data_vault.db   one time: copy the vault into Turso (resumable)
     python turso_vault.py pull   [--db <replica>]     bring this PC's replica up to date (first run = everything)
     python turso_vault.py status [--db <replica>]     rows in Turso vs the local file
-(without --db: %LOCALAPPDATA%\\LHShortBot\\vault\\market_data_vault.db)
+(without --db: %LOCALAPPDATA%\\Kestrel\\vault\\market_data_vault.db)
 
 Credentials: TURSO_DATABASE_URL / TURSO_AUTH_TOKEN in the bot's .env (or the environment).
 The ARCHIVE vault (market_data_vault_ARCHIVE.db, older days) is NOT uploaded: it would add ~4,800 extra days to every
@@ -30,7 +30,8 @@ import turso  # noqa: E402
 def default_replica():
     """This PC's replica: the vault path of the Backtest tab, else <app data>\\vault\\market_data_vault.db."""
     root = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
-    return os.path.join(root, "LHShortBot", "vault", "market_data_vault.db")
+    new, old = (os.path.join(root, d, "vault", "market_data_vault.db") for d in ("Kestrel", "LHShortBot"))
+    return old if os.path.isfile(old) and not os.path.isfile(new) else new      # before the data folder moved
 
 
 DEFAULT_DB = default_replica()

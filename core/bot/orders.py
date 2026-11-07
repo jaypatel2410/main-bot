@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LH Short Bot - Bot: entries, covers, locates, order tracking and the orders panel.
+"""Kestrel - Bot: entries, covers, locates, order tracking and the orders panel.
 Part of the Bot class (core/bot/bot_core.py): main.py runs this file in its own namespace. Code moved here unchanged."""
 
 class _BotOrders:
@@ -95,20 +95,33 @@ class _BotOrders:
     async def _short_scan(self):
         """IBKR top % gainers up SHORT_SCAN_MIN_UP_PCT%+ (price SHORT_SCAN_MIN_PRICE+) -> the short watchlist."""
         ib = self.be.ib
-        if self.scanning or ib is None or not ib.isConnected() or ScannerSubscription is None:
+        if self.scanning or ib is None or not ib.isConnected():
             return
         self.scanning = True
         try:
-            sub = ScannerSubscription(instrument="STK", locationCode="STK.US.MAJOR", scanCode="TOP_PERC_GAIN",
-                                      numberOfRows=50, abovePrice=SHORT_SCAN_MIN_PRICE)
-            flt = [TagValue("changePercAbove", f"{SHORT_SCAN_MIN_UP_PCT:g}")]
-            data = await asyncio.wait_for(ib.reqScannerDataAsync(sub, [], flt), 20)
+            # 3.15: the shared gainers scan. With the Scanner screen open its live quotes check the up % (no extra IB
+            # request); otherwise a list asked with exactly SHORT_SCAN_MIN_UP_PCT (shared / cached when it can be)
+            quotes = bool(getattr(self.be, "scan_on", False))
+            cons, eup = await self.be.gainers("short", SHORT_SCAN_MIN_UP_PCT, SHORT_SCAN_MIN_PRICE, 50,
+                                              SHORT_SCAN_INTERVAL_SEC, exact=not quotes)
             self.scan_n += 1
             self.scan_fail = 0
-            for d in data or []:
-                sym = str(getattr(d.contractDetails.contract, "symbol", "") or "").upper().strip().replace(" ", ".")
+            for c in cons or []:
+                sym = str(getattr(c, "symbol", "") or "").upper().strip().replace(" ", ".")
                 if not re.match(r"^[A-Z][A-Z0-9.]{0,7}$", sym) or sym in self.syms or sym in self.scan_seen:
                     continue
+                tk = self.be.scan_tk.get(sym, (None, None))[1] if quotes else None
+                if eup < SHORT_SCAN_MIN_UP_PCT - 1e-9:   # list asked with a lower up %: the live quote must show it
+                    lq = _num(getattr(tk, "last", None)) if tk is not None else None
+                    pq = _num(getattr(tk, "close", None)) if tk is not None else None
+                    if not lq or not pq or (lq / pq - 1) * 100.0 < SHORT_SCAN_MIN_UP_PCT:
+                        continue                         # not up enough / no quote yet (not marked seen: checked again)
+                if tk is not None:                       # 3.15: under 1M shares today / worth over $1B: not added now
+                    last = _num(getattr(tk, "last", None)) or _num(getattr(tk, "close", None))      # (not marked seen: the
+                    vol = (_num(getattr(tk, "volume", None)) or 0.0) * self.be._vol_mult()            # next scan checks again)
+                    fl = self.be.floats.peek(sym) if getattr(self.be, "floats", None) is not None else None
+                    if not scan_keep(vol, fl["v"] * last if fl and fl.get("v") and last else None):
+                        continue
                 self.scan_seen.add(sym)
                 if len(self.syms) >= MAX_WATCHLIST:
                     self._notify(f"\U0001F50E short scanner: {sym} is up {SHORT_SCAN_MIN_UP_PCT:g}%+ - watchlist full",
@@ -171,74 +184,20 @@ class _BotOrders:
                      + (" Located after a search." if searched else ""), "trade", bs=bs, chart=True, critical=True)
 
     def _check_prelocate(self, bs, secs):
-        """Stock stretched PRELOCATE_VWAP_PCT+ above VWAP: report it with the chart and get the locate now (once a day)."""
-        if jr_mode():                                    # Jay-read: momentum broke / 3.9.0 max squeeze: a squeeze is on
-            if (not JR_PRELOCATE or not jr_ready() or bs.pre_done or bs.pre_req or bs.hunt is not None
-                    or bs.phase != "idle" or not bs.last_px or self.can_open() or bs.jr is None or jr_finished(bs.jr)):
-                return
-            want_jr = bool(bs.jr_ctx) and mode("jr") == "trading" and not jr_part_finished(jr_part(bs.jr, "rollover"))
-            sq = getattr(bs.jr, "sq", None)
-            want_sq = bool(bs.sq_ctx) and sq is not None and mode("sq") == "trading" and not jr_part_finished(sq)
-            if not (want_jr or want_sq):                 # never for an alert-only strategy
-                return
-            if not (K.rth_s <= secs < _secs(JR.SIGNAL_END)):
-                return
-            e = bs.eng or {}
-            vw = e.get("vwap")
-            bs.pre_req = {"jr": dict(bs.jr_ctx) if want_jr else None, "sq": dict(bs.sq_ctx) if want_sq else None,
-                          "vwap": vw, "ext": (bs.last_px / vw - 1.0) * 100.0 if vw else 0.0, "ref": bs.last_px,
-                          "mono": time.monotonic()}
+        """The read says momentum broke (Jay-read): ask for the locate now (once), so the shares are ready for a signal."""
+        if (not JR_PRELOCATE or not jr_ready() or bs.pre_done or bs.pre_req or bs.hunt is not None
+                or bs.phase != "idle" or not bs.last_px or self.can_open() or bs.jr is None or jr_finished(bs.jr)):
+            return
+        if not (bool(bs.jr_ctx) and mode("jr") == "trading" and not jr_part_finished(jr_part(bs.jr, "rollover"))):
+            return                                       # never for an alert-only strategy
+        if not (K.rth_s <= secs < _secs(JR.SIGNAL_END)):
             return
         e = bs.eng or {}
-        if bs.pre_done or bs.pre_req or bs.phase != "idle" or not e.get("vwap") or not bs.last_px or self.can_open():
-            return
-        if not (_secs(PRELOCATE_START) <= secs < _secs(STRAT.VAC_LAST_ENTRY_TIME)):
-            return
-        ext = (bs.last_px / e["vwap"] - 1.0) * 100.0
-        if ext < PRELOCATE_VWAP_PCT:
-            return
-        st = bs.st
-        pc = prior_for(st, st.tc[-1] // 86400) if st is not None and st.tc else None
-        vac_any_gap = getattr(STRAT, "VACUUM_ENABLED", False) and not getattr(STRAT, "VAC_REQUIRE_GAP", True)
-        if vac_any_gap:
-            pass                                         # LIVE: vacuum shorts need no gap - every stretched watchlist stock
-        elif secs < K.rth_s:
-            if not pc or bs.last_px < pc * (1 + STRAT.MIN_GAP_PCT / 100.0):
-                return                                   # premarket: must already be up the gap size
-        elif not e.get("gapOk"):
-            return
-        bs.pre_req = {"vwap": e["vwap"], "ext": ext, "ref": e["vwap"] * (1 + PRELOCATE_VWAP_PCT / 100.0),
-                      "mono": time.monotonic()}
+        vw = e.get("vwap")
+        bs.pre_req = {"jr": dict(bs.jr_ctx), "vwap": vw, "ext": (bs.last_px / vw - 1.0) * 100.0 if vw else 0.0,
+                      "ref": bs.last_px, "mono": time.monotonic()}
 
     # ---------------- locates ----------------
-    async def _prelocate(self, bs, req):
-        """v16 (parked) pre-locate: the stock stretched PRELOCATE_VWAP_PCT+ above VWAP (the Jay-read / max squeeze shorts
-        use the locate search, _jr_hunt)."""
-        if self.can_open():
-            return
-        ref = req["ref"]
-        qty = self._size(ref)
-        if not (self.is_paper() and not LOCATE_ON_PAPER) and not bs.etb:
-            have = await self._inventory(bs)               # 3.8.0: yours (ZeroPro / web) or the bot's, any time today
-            if self._enough_located(have, qty):
-                self._notify(f"⚡ {bs.sym}: {req['ext']:.0f}% above VWAP - setup forming",
-                             f"{have:,} shares are already located in the account (size {qty:,}) - they are used, no new "
-                             f"locate.", "trade", bs=bs, chart=True)
-                return
-        self._notify(f"⚡ {bs.sym}: {req['ext']:.0f}% above VWAP - setup forming",
-                     f"Last {_fp(bs.last_px)}, VWAP {_fp(req['vwap'])}. Getting the locate now so the shares are ready "
-                     f"before a signal (reference price VWAP +{PRELOCATE_VWAP_PCT:g}% = {_fp(ref)}).",
-                     "trade", bs=bs, chart=True, critical=True)
-        bs.phase = "locating"
-        self._status(bs)
-        try:
-            await self._get_locate(bs, qty, ref, "pre")
-        except TZError as exc:
-            self._notify(f"❌ {bs.sym}: locate error", str(exc), "err")
-        finally:
-            if bs.phase == "locating":
-                bs.phase = "idle"
-
     @staticmethod
     def _enough_located(avail, qty):
         """3.8.0: the shares already located are used without buying more (LOCATE_USE_EXISTING_MIN_PCT)."""
@@ -306,7 +265,7 @@ class _BotOrders:
         else:
             self._notify(f"\U0001F4E8 {bs.sym}: locate requested - {need:,} shares",
                          (f"{avail:,} shares already located in the account - only the missing ones are located. " if avail
-                          else "") + f"Price basis {_fp(px)} ({'VWAP +' + format(PRELOCATE_VWAP_PCT, 'g') + '%' if mode == 'pre' and not jr_mode() else 'last price' if mode == 'pre' else 'entry price'}). "
+                          else "") + f"Price basis {_fp(px)} ({'last price' if mode == 'pre' else 'entry price'}). "
                          f"Max locate {MAX_LOCATE_PCT:g}% = ${cap:.4f}/share = up to {_money(cap * need)} total. "
                          f"Waiting for TradeZero's offer...", "info", bs=bs, stage="locate", critical=True)
         offers, rows, deadline, first_seen = [], [], time.monotonic() + LOCATE_WAIT_SEC, None
@@ -354,7 +313,7 @@ class _BotOrders:
         else:
             decision = "Not buying - nothing within the cap." + (
                 f" The bot keeps searching: a request every {LOCATE_RETRY_SEC:g} s, a {LOCATE_PAUSE_SEC / 60:g}-min break "
-                f"after every {LOCATE_HUNT_SEC / 60:g} min." if jr_mode() else "")
+                f"after every {LOCATE_HUNT_SEC / 60:g} min.")
         if quiet and not choices:
             self._log(f"{bs.sym}: locate request #{bs.locate_requests}: {bs.loc_note or 'no offer'} - not bought "
                       f"(max {MAX_LOCATE_PCT:g}% of {_fp(px)})")
@@ -430,34 +389,14 @@ class _BotOrders:
             if time.monotonic() > ent.get("deadline", 0):
                 return False, f"not filled within {JR_ENTRY_TIMEOUT_SEC}s"
             return True, ""
-        if ent.get("setup") == "VACUUM":
-            if bs.halted:
-                return False, "halted - pulled, sent again when trading resumes"
-            if time.monotonic() > ent.get("deadline", 0):
-                return False, f"not filled within {VAC_ENTRY_TIMEOUT_SEC}s"
-            return True, ""
-        if wall % 86400 > _secs(STRAT.LAST_ENTRY_TIME) + 59:
-            return False, f"{STRAT.LAST_ENTRY_TIME} passed"
         if bs.halted:
-            return False, "halted - the limit is pulled until trading resumes"
-        if bs.st is None and bs.data_lost_at is not None and time.monotonic() - bs.data_lost_at > 20:
-            return False, "no IB data"
-        p = e.get("pending")
-        if p and abs(p["top"] - ent["top"]) <= 1e-9 * ent["top"]:
-            return True, ""
-        for t in e.get("trades", []):                   # the engine saw the fill on this top: give TradeZero 2 minutes
-            if abs(t["top"] - ent["top"]) <= 1e-9 * ent["top"] and t["t"] >= wall // 60 * 60 - 120:
-                return True, ""
-        if p:
-            return False, "new high of day - new top"
-        return False, (e.get("block") or "setup no longer armed")
+            return False, "halted - the order is pulled"
+        return False, "not a bot entry order"
 
     @staticmethod
     def _entry_last_time(ent):
         """The last entry time of the setup this entry order belongs to."""
-        if ent.get("jr") and JR is not None:
-            return JR.LAST_ENTRY_TIME
-        return getattr(STRAT, "VAC_LAST_ENTRY_TIME", "15:30") if ent.get("setup") == "VACUUM" else STRAT.LAST_ENTRY_TIME
+        return JR.LAST_ENTRY_TIME if JR is not None else "15:30"
 
     @staticmethod
     def _entry_totals(ent, o):
@@ -541,8 +480,6 @@ class _BotOrders:
             by_you = bool(ent.get("user_cancel")) or (status == "Canceled" and not ent.get("cancel_sent") and not ent.get("why"))
             if status == "Rejected":
                 self._notify(f"❌ {bs.sym}: short order rejected", str(o.get("text")), "err")
-                if ent.get("top"):
-                    bs.skip_top[ent["top"]] = f"rejected: {o.get('text')}"
             if ent["filled"] > 0:
                 if by_you:
                     self._notify(f"✋ {bs.sym}: you cancelled the rest of the entry",
@@ -561,8 +498,6 @@ class _BotOrders:
                 elif status != "Rejected":
                     self._notify(f"{bs.sym}: short order {status.lower()} - nothing filled", ent.get("why", ""), "dim",
                                  bs=bs, stage="skipped")
-                if ent.get("vac_key") and str(ent.get("why", "")).startswith("halted") and not by_you:
-                    bs.used_vac.discard(ent["vac_key"])         # the vacuum signal is tried again at the reopen
                 bs.entry, bs.phase = None, "idle"
             return
         keep, why = self._keep_entry(bs, self._wall())
@@ -613,16 +548,11 @@ class _BotOrders:
                 ent["stop"] = ent["top"] * (1 + JR.HOD_STOP_PCT / 100.0)
                 if getattr(bs.jr, "jr2", None) is not None and bs.jr.reader.hod > 0:   # 3.13.0: Jay-read 2 = HOD +5%
                     ent["stop"] = bs.jr.reader.hod * (1 + JR2.HOD_STOP_PCT / 100.0)
-            else:
+            else:                                            # no read: the high of day +3%
                 if not e.get("hod"):
                     return
-                ent["stop"] = e["hod"] * (1 + STRAT.STOP_ABOVE_TOP_PCT / 100.0)
+                ent["stop"] = e["hod"] * 1.03
                 ent["top"] = e["hod"]
-        vw = (bs.eng or {}).get("vwap")
-        if (ent.get("setup") == "VACUUM" and getattr(STRAT, "VAC_EXIT", "EOD") == "VWAP" and vw and bs.last_px
-                and bs.last_px <= vw and not halted):        # VAC_EXIT = "VWAP": the vacuum short is covered at VWAP
-            await self._start_cover(bs, "VWAP target")
-            return
         if bs.stop_guard is not None:                        # 3.12: TradeZero rejected / cancelled the stop
             await self._guard_stop(bs)
             return

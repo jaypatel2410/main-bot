@@ -51,7 +51,7 @@
         return `<div class="ntrow${ntKey(x) === ntSel ? ' sel' : ''}" data-nk="${esc(ntKey(x))}"><b>${esc(ntGrp === 'tk' ? ntDayLab(x.day) : x.tk)}</b>` +
           `<span class="c">${k ? `${k} note${k === 1 ? '' : 's'}` : 'verdict only'}</span></div>`; }).join('');
     }
-    $('nt-list').innerHTML = html || `<div class="oempty">${ntItems.length ? 'Nothing matches this filter.' : 'No notes yet. Right click the live chart or a backtest chart and pick Add note.'}</div>`;
+    $('nt-list').innerHTML = html || `<div class="oempty">${ntItems.length ? 'Nothing matches this filter.' : 'No notes'}</div>`;
     const sel = S.find(x => ntKey(x) === ntSel) || S[0];
     if (sel) ntShow(sel); else { ntSel = ''; $('nt-det').style.visibility = 'hidden'; }
   }
@@ -117,8 +117,8 @@
     m.sort((a, b) => a.time - b.time); ntSer.setMarkers(m);
   }
   function ntPinShow(){
-    $('nt-pin').textContent = ntPin ? `Pinned to ${fmtT(ntPin.t)} at ${fmtPx(ntPin.px)} (click the chart again to move it)`
-      : ntLastBar ? `Pinned to the latest candle (${fmtT(ntLastBar.t)} at ${fmtPx(ntLastBar.px)}) - or click the chart to pick one` : 'Click the chart to pin it to a candle and price';
+    $('nt-pin').textContent = ntPin ? `Pinned ${fmtT(ntPin.t)} at ${fmtPx(ntPin.px)}`
+      : ntLastBar ? `Latest candle ${fmtT(ntLastBar.t)} at ${fmtPx(ntLastBar.px)}` : 'Not pinned';
     $('nt-unpin').hidden = !ntPin;
   }
   const ntCur = () => ntItems.find(i => ntKey(i) === ntSel);

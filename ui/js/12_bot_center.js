@@ -1,6 +1,6 @@
   // ---- Bot center ----
   const BC_STRATS = [['jr2', 'Jay-read 2 short'], ['jr', 'Jay-read short v1.2'], ['long', 'Premarket long']];   // 3.13.0   // 3.12.2: no max squeeze live
-  const stratOf = s => /squeeze/i.test(s || '') ? 'sq' : /JR2|jay-read 2/i.test(s || '') ? 'jr2' : /jay-read/i.test(s || '') ? 'jr' : /long/i.test(s || '') ? 'long' : 'other';
+  const stratOf = s => /JR2|jay-read 2/i.test(s || '') ? 'jr2' : /jay-read/i.test(s || '') ? 'jr' : /long/i.test(s || '') ? 'long' : 'other';
   function renderBC(){
     if (screen !== 'bot' || !bot) return;
     const md = bot.modes || {}, mon = bot.modeOn || {}, h = bot.health || {}, cl = bot.closed || [], ps = bot.pos || [], bt = info.btref || {};
@@ -19,7 +19,6 @@
       if (!on) now = `<div>Not running</div>`;
       else if (k === 'long') now = lng ? `<div>${esc({off: 'Off', waiting: 'Waiting for its window', running: 'Scanning and trading', closing: 'Selling the open longs', done: 'Done for today'}[lng.st] || lng.st)} - ${esc(lng.win)} ET</div>` +
         `<div>${lng.note ? esc(lng.note) : `${lng.watch} watched - ${(lng.act || []).length} open`}</div>` : '<div>Starting...</div>';
-      else if (k === 'sq') now = `<div>Reads the same watchlist as the Jay-read short - one short per stock at a time.</div><div>Up ${'30'}%+, a ${'50'}% squeeze over a swing high, red candle at the top - 09:30-15:00.</div>`;
       else { const rs = (bot.rows || []).slice(0, 3); now = rs.length ? rs.map(x => `<div title="${esc(x.sym + ' - ' + x.status)}"><b style="color:#fff">${esc(x.sym)}</b> ${esc(x.status)}</div>`).join('') : '<div>The watchlist is empty.</div>'; }
       return `<div class="bcc"><div class="n">${nm}<small>backtest ${bt[k] ? bt[k].n + ' trades, ' + bt[k].win + '% win' : ''}</small></div>` +
         `<div class="seg${on ? '' : ' na'}">` + [['trading', 'Trading'], ['alert', 'Alert only'], ['off', 'Off']].map(([v, t]) =>
@@ -69,17 +68,15 @@
     const mc = bot.mcheck, sc = bot.stopchk || [];
     const bad = mc ? mc.items.filter(i => i.ok === 'bad').length : 0;
     $('bc-mc').innerHTML = `<div class="jt"><span>Morning check</span>${mc ? `<span class="mcst ${bad ? 'bad' : 'ok'}">${bad ? bad + ' failed' : 'All passed'} · ${esc(mc.at)}</span>` : ''}</div>` +
-      `<div class="sm" style="margin:-2px 0 8px">Runs at start, 04:55 and 09:00 - the result goes to Discord</div>` +
       (mc ? mc.items.map(i => `<div class="mcrow"><span class="dot ${i.ok}"></span><b>${esc(i.name)}</b><span title="${esc(i.text)}">${esc(i.text)}</span></div>`).join('')
-        : '<div class="oempty">Not run yet (the first check runs about a minute after the start).</div>') +
+        : '<div class="oempty">Not run yet</div>') +
       `<div style="display:flex;gap:8px;margin-top:12px"><button class="sbtn pri" id="mc-run">Run check now</button><button class="sbtn" id="mc-send"${mc ? '' : ' disabled'}>Send to Discord</button></div>`;
     $('bc-sc').innerHTML = `<div class="jt"><span>Stop check</span><span class="sm">every minute${bot.stopchkAt ? ' · last ' + esc(bot.stopchkAt) : ''}</span></div>` +
       `<div class="scg h"><span>Ticker</span><span class="r">Qty</span><span class="r">Bot stop</span><span class="r">At TradeZero</span><span>Status</span></div>` +
       (sc.length ? sc.map(r => `<div class="scg"><span><b>${esc(r.sym)}</b> <span class="sm">${esc(r.side)}</span></span><span class="r">${Number(r.qty).toLocaleString()}</span>` +
         `<span class="r">${fmtPx(r.bot)}</span><span class="r ${r.side === 'short' && r.tz == null && r.st !== 'ok' ? 'bad' : ''}">${r.side === 'long' ? '-' : r.tz == null ? 'missing' : fmtPx(r.tz) + (r.yours ? ' <span class="sm">(yours)</span>' : '')}</span>` +
         `<span><span class="dot ${r.st}"></span> <span class="${r.st === 'ok' ? '' : r.st}">${esc(r.text)}</span></span></div>`).join('')
-        : '<div class="oempty">No open position.</div>') +
-      `<div class="sm" style="white-space:normal;margin-top:8px">Checks the stop exists, its side and quantity. Never moves a stop you set yourself. In a halt it waits for the reopen (halt rules).</div>`;
+        : '<div class="oempty">No open position.</div>');
     const wd = bot.watchdog || {};
     $('bc-wd').innerHTML = `<div><div class="jt"><span>Watchdog</span></div><div class="l">` +
       `<div><span class="dot ${wd.age != null && wd.age < 10 ? 'ok' : 'bad'}"></span>&nbsp; Main loop beat ${wd.age == null ? '-' : wd.age + ' s ago'}</div>` +

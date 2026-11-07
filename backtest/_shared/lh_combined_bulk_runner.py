@@ -6,7 +6,7 @@ COMBINED BULK RUNNER 3.10.0 -  premarket long (05:00-09:00) + intraday shorts (J
 Runs every ticker-day stored in your IB data vault (default - no Excel file needed), or every Ticker/Date
 row of a list file, through the strategies of lh_combined_backtester.py (the same folder) and writes one master
 Excel report. The engines are imported from that file and used exactly as they are: the premarket long engine and
-the intraday shorts of LH Short Bot 3.9.0 - the Jay-read short v1.2 (jay_read_short.py) + the max squeeze short
+the intraday shorts of Kestrel 3.9.0 - the Jay-read short v1.2 (jay_read_short.py) + the max squeeze short
 (max_squeeze_short.py), one short per stock at a time ("v16" = the parked bounce-zone + vacuum short of 3.6.4).
 This file holds no trading logic. Put lh_combined_backtester.py, jay_read_short.py, max_squeeze_short.py and
 lh_vault_bars.py in the same folder.

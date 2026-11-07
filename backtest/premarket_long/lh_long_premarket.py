@@ -3,7 +3,7 @@
 """
 LH LONG PREMARKET 1.9  -  premarket momentum chase on 10-second bars (the rules of your backtest)
 =====================================================================================================
-1.9 (LH Short Bot 3.12.0): ROBUST SELLING (no extreme slippage):
+1.9 (Kestrel 3.12.0): ROBUST SELLING (no extreme slippage):
   - a sell is never priced more than EXIT_FLOOR_PCT (4%) under the LAST TRADE (a thin / empty book cannot fill it 15%
     down at once); the floor widens EXIT_FLOOR_STEP_PCT every EXIT_FLOOR_STEP_SEC while it does not sell, up to
     EXIT_MAX_DEPTH_PCT - so it always gets out, just not into a hole;
@@ -11,13 +11,13 @@ LH LONG PREMARKET 1.9  -  premarket momentum chase on 10-second bars (the rules 
   - halted: no sell is sent (TradeZero rejects it); it goes the instant the stock trades again;
   - from 09:30: a marketable limit RTH_SELL_COLLAR_PCT under the bid (deeper each try, re-priced every second) instead of
     a plain market order; a market order only after RTH_SELL_MARKET_AFTER tries.
-1.8 (LH Short Bot 3.10.0):
+1.8 (Kestrel 3.10.0):
   - the hard stop sells at stop +1% (STOP_EARLY_PCT = 1.0): a fast premarket fade slipped 3.5% under the stop (BIRD
     23 Oct: stop 3.10, sold 2.99). The trail after the half is unchanged. Every stop sale is logged to
     long_stop_slippage.csv (stop, trigger, fill, slippage) and posted with the slippage.
   - the app's Trading mode: Trading / Alert only (setups posted as "SIGNAL · NOT TRADED", no buys) / Off.
   - Discord: posted as "Longs" with a tag line (LONG WATCH, BOUGHT, HALF SOLD, CLOSED · WIN / STOP, LONGS FLAT · 09:00).
-1.7 (LH Short Bot 3.8.0): SAFETY LAYER after the LRHC long of 16 Oct (TradeZero answered the buy with HTTP 404, the
+1.7 (Kestrel 3.8.0): SAFETY LAYER after the LRHC long of 16 Oct (TradeZero answered the buy with HTTP 404, the
 order filled anyway, the bot never knew and the long ran without a stop until the 09:00 flatten could not sell it):
   - every order whose answer is an error (any HTTP code, or no answer) is looked up at TradeZero by its id before the
     bot believes it - a 404 that filled is tracked like a normal fill;
@@ -33,7 +33,7 @@ order filled anyway, the bot never knew and the long ran without a stop until th
   - a symbol is never dropped from the watchlist while TradeZero shows the bot's shares in it.
   The 12.5%-of-the-position max loss per trade is removed (it never cut a trade: the stop is at most 10%).
 
-Part of LH Short Bot 3.8.0 (1.6 was in 3.6.4 - 3.7.2). Keep this file NEXT TO main.py (3.12; was lh_short_bot_app.py): the app imports it and runs the
+Part of Kestrel 3.8.0 (1.6 was in 3.6.4 - 3.7.2). Keep this file NEXT TO main.py (3.12; was kestrel_app.py): the app imports it and runs the
 premarket long inside the same window, with the same IB Gateway connection, the same TradeZero account
 and the same Discord webhook (Keys button in the app). There is nothing to start separately.
 
@@ -54,7 +54,7 @@ and the same Discord webhook (Keys button in the app). There is nothing to start
                takes no market orders before 09:30). Anything still unsold is retried every 20 s, at market from
                09:30. While a long is still open the short bot does NOT short that symbol.
   Discord      every stock added (with chart), every entry, half, exit with P&L, the 09:00 flatten and the
-               premarket summary - posted as "LH Long Bot" in your channel.
+               premarket summary - posted as "Kestrel long" in your channel.
   The app      Orders panel -> "Premarket long" tab: active and closed long trades, ON / OFF switch.
 
 FILTERS: none besides the strategy below - no market-cap, no prior-day-volume and no news filter.
@@ -847,7 +847,7 @@ def legs_table(legs):
 
 
 # =============================================================================
-# LIVE MODULE - runs inside LH Short Bot (shares its IB connection, TradeZero client and Discord)
+# LIVE MODULE - runs inside Kestrel (shares its IB connection, TradeZero client and Discord)
 # Adapted from lh_long_bot.py 1.0: same Feed / Trader / order logic, one asyncio loop with the app.
 # =============================================================================
 import asyncio
@@ -1843,12 +1843,20 @@ class LongModule:
             return
         self.scanning = True
         try:
-            sub = ScannerSubscription(instrument="STK", locationCode=SCAN_LOCATION, scanCode=SCAN_CODE,
-                                      numberOfRows=SCAN_ROWS, abovePrice=MIN_ENTRY_PRICE)
-            flt = [TagValue("changePercAbove", f"{MIN_GAP_PCT * 100:g}")] if SCAN_FILTER_CHANGE else []
-            data = await asyncio.wait_for(ib.reqScannerDataAsync(sub, [], flt), 20)
+            hub = getattr(getattr(self.host, "be", None), "gainers", None)
+            if hub is not None and SCAN_CODE == "TOP_PERC_GAIN" and SCAN_LOCATION == "STK.US.MAJOR":
+                # app 3.15: the app's ONE shared IB gainers scan (also feeds the Scanner screen and the short scanner);
+                # exact: only a list asked with this module's own up % / price (the same stocks as its own request)
+                cands, _ = await hub("long", MIN_GAP_PCT * 100 if SCAN_FILTER_CHANGE else 0.0, MIN_ENTRY_PRICE,
+                                     SCAN_ROWS, SCAN_INTERVAL_SEC, exact=True, share=True)
+                cands = list(cands)
+            else:
+                sub = ScannerSubscription(instrument="STK", locationCode=SCAN_LOCATION, scanCode=SCAN_CODE,
+                                          numberOfRows=SCAN_ROWS, abovePrice=MIN_ENTRY_PRICE)
+                flt = [TagValue("changePercAbove", f"{MIN_GAP_PCT * 100:g}")] if SCAN_FILTER_CHANGE else []
+                data = await asyncio.wait_for(ib.reqScannerDataAsync(sub, [], flt), 20)
+                cands = [d.contractDetails.contract for d in data or []]
             self.scan_errors = 0
-            cands = [d.contractDetails.contract for d in data or []]
             self.scan_n += 1
             self.scan_hits += len(cands)
             cands += [Stock(s, "SMART", "USD") for s in self.extra_tickers()]

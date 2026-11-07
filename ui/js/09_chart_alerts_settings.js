@@ -39,7 +39,30 @@
     if (k === 'env') keysLoad();
     if (k === 'colors') colRender();
     if (k === 'strat') ssLoad();
+    if (k === 'force') sfLoad();
   }
+  // ---- 3.15: Settings > In force - every setting the bot uses now and where it comes from ----
+  const SF_SRC = {built: ['App', 'The app\'s own setting'], strategy: ['Strategy', 'The strategy\'s own value'],
+    yours: ['Your change', 'Changed by you in Settings > Strategies'], app: ['Picked in the app', 'Picked on a screen of the app'],
+    keys: ['Keys', 'Keys and Discord (only set / not set is shown)']};
+  let sfQ = '';
+  function sfLoad(){ api('settings_in_force').then(r => {
+    const box = $('sf-body');
+    if (!r || !r.ok) { box.innerHTML = `<div class="oempty">${esc((r && r.error) || 'Not available')}</div>`; return; }
+    const q = sfQ.toLowerCase();
+    const legend = Object.entries(SF_SRC).map(([k, v]) => `<span class="sf-src sf-${k}" title="${esc(v[1])}">${esc(v[0])}</span>`).join('');
+    const nY = r.groups.reduce((n, g) => n + g.rows.filter(x => x.src === 'yours').length, 0);
+    box.innerHTML = `<div class="sf-top"><input id="sf-q" placeholder="Find a setting" spellcheck="false" value="${esc(sfQ)}">
+      <div class="sf-leg">${legend}</div><span class="sf-n">${nY ? nY + ' changed by you' : 'No changes by you - strategy values'}</span>
+      <button class="sbtn" id="sf-re">Refresh</button></div>` +
+      r.groups.map(g => { const rows = g.rows.filter(x => !q || (g.name + ' ' + x.name + ' ' + x.value).toLowerCase().includes(q));
+        if (!rows.length) return '';
+        return `<div class="sf-grp"><div class="mh">${esc(g.name.toUpperCase())}</div>` + rows.map(x =>
+          `<div class="sf-row"><span class="k">${esc(x.name)}</span><span class="v">${esc(x.value)}${x.was != null ? `<small>was ${esc(x.was)}</small>` : ''}</span>` +
+          `<span class="sf-src sf-${x.src}" title="${esc((SF_SRC[x.src] || ['', ''])[1])}">${esc((SF_SRC[x.src] || [x.src])[0])}</span></div>`).join('') + '</div>'; }).join('');
+    const qi = $('sf-q'); qi.addEventListener('input', () => { sfQ = qi.value; const p = qi.selectionStart; sfLoad(); setTimeout(() => { const n = $('sf-q'); if (n) { n.focus(); n.setSelectionRange(p, p); } }, 60); });
+    $('sf-re').addEventListener('click', () => sfLoad());
+  }); }
   // ---- 3.15: Settings > Strategies - your changes over the strategy files (saved next to the bot; new signals use them) ----
   let ssK = 'jr2', ssTab = 0, ssView = null, ssEdit = {};
   function ssShown(f, v){ if (v == null || v === '') return ''; if (f.kind === 'bool' || f.kind === 'time' || f.kind.startsWith('opt:')) return v;
@@ -62,13 +85,13 @@
         `<div class="ss-in">${ch ? `<span class="ss-was">was ${esc(ssShown(f, f.default) === '' ? 'none' : f.kind === 'bool' ? (f.default ? 'On' : 'Off') : ssShown(f, f.default))}</span>` : ''}${inp}<em>${esc(f.unit || '')}</em></div></div>`; };
     const col = gs => gs.map(g => `<div class="ss-grp"><div class="mh">${esc(g.name.toUpperCase())}</div>${g.fields.map(fld).join('')}</div>`).join('');
     $('ss-body').innerHTML = `<div class="ss-top"><div class="seg2" id="ss-k">${r.list.map(s => `<button data-v="${s.k}" class="${s.k === ssK ? 'on' : ''}">${esc(s.name)}</button>`).join('')}</div>` +
-      `<span class="sm">Trading mode is set in Trading</span></div>` +
+      `</div>` +
       (r.tabs.length > 1 ? `<div class="ss-top"><div class="seg2" id="ss-tab">${r.tabs.map((t, i) => `<button data-v="${i}" class="${i === ssTab ? 'on' : ''}">${esc(t.name)}</button>`).join('')}</div>` +
-        `<span class="sm">${esc(tab.note)}</span></div>` : '') +
-      (r.loaded ? '' : '<div class="sm jred">This strategy is not loaded in the bot right now - saved values apply when it is.</div>') +
+        `</div>` : '') +
+      (r.loaded ? '' : '<div class="sm jred">Not loaded</div>') +
       `<div class="ss-cols"><div>${col(tab.groups.slice(0, half))}</div><div>${col(tab.groups.slice(half))}</div></div>` +
-      `<div class="ss-foot"><span class="dot ${diff.length ? 'warn' : 'ok'}"></span><span class="n">${diff.length ? plural(diff.length, 'unsaved change') : saved.length ? plural(saved.length, 'setting') + ' changed from the file' : 'File defaults'}</span>` +
-      `<span class="sm">New signals use them at once · open positions keep their stop</span><div class="spacer"></div>` +
+      `<div class="ss-foot"><span class="dot ${diff.length ? 'warn' : 'ok'}"></span><span class="n">${diff.length ? plural(diff.length, 'unsaved change') : saved.length ? plural(saved.length, 'setting') + ' changed' : 'Defaults'}</span>` +
+      `<div class="spacer"></div>` +
       `<button class="sbtn" id="ss-reset">Reset to default</button><button class="sbtn" id="ss-bt">Backtest these settings</button>` +
       `<button class="sbtn" id="ss-discard"${diff.length ? '' : ' disabled'}>Discard</button><button class="sbtn pri" id="ss-save"${diff.length ? '' : ' disabled'}>Save</button></div>`;
   }

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LH Short Bot 3.15 - the missed-trade log (Journal > Missed).
+"""Kestrel 3.15 - the missed-trade log (Journal > Missed).
 
 Every strategy signal the bot did not take is recorded with its reason, then followed on the live candles with that
 strategy's own exit rules until the would-have exit happens:

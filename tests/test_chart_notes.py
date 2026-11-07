@@ -1,4 +1,4 @@
-"""LH Short Bot 3.14 - chart notes (core/data/chart_notes.py). No network: "Turso" here is a throwaway SQLite file
+"""Kestrel 3.14 - chart notes (core/data/chart_notes.py). No network: "Turso" here is a throwaway SQLite file
 (TURSO_DATABASE_URL=file:...), and two temporary folders play two PCs. Run from the bot folder:
     python tests/test_chart_notes.py
 
@@ -16,7 +16,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-TMP = tempfile.mkdtemp(prefix="lh_notes_test_")
+TMP = tempfile.mkdtemp(prefix="kestrel_notes_test_")
 os.environ["TURSO_DATABASE_URL"] = "file:" + os.path.join(TMP, "cloud.db")     # never the real database
 os.environ["TURSO_AUTH_TOKEN"] = "test"
 for p in (os.path.join(ROOT, "core", "data"), os.path.join(ROOT, "core", "backtest_engine")):
@@ -91,7 +91,7 @@ check("both PCs end with the same notes", [n["text"] for n in A2.for_ticker("AZT
       == [n["text"] for n in B.for_ticker("AZTR")])
 
 print("3 the backtest's old notes move over")
-import lh_backtest as LB                                                          # noqa: E402
+import kestrel_backtest as LB                                                          # noqa: E402
 LB.BT_DIR = os.path.join(TMP, "backtest")
 os.makedirs(os.path.join(LB.BT_DIR, "jay_read_2"))
 LB.notes_save("jay_read_2", "RDAC", "2026-11-03", verdict="Good trade")

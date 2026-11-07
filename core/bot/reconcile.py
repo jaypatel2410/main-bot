@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""LH Short Bot - Bot: TradeZero connection, reconciliation, restart rebuild, journal, state file.
+"""Kestrel - Bot: TradeZero connection, reconciliation, restart rebuild, journal, state file.
 Part of the Bot class (core/bot/bot_core.py): main.py runs this file in its own namespace. Code moved here unchanged."""
 
 class _BotReconcile:

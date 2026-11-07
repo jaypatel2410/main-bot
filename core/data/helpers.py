@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
-"""LH Short Bot - app helpers: .env, strategy selection, chart rows, settings, alerts, journal, UI bridge, BotSym.
+"""Kestrel - app helpers: .env, strategy selection, chart rows, settings, alerts, journal, UI bridge, BotSym.
 Part of main.py: main.py runs this file in its OWN namespace (same names, same settings), so the code works exactly
 as when it was one file. Do not run it on its own - start main.py."""
 # =============================================================================
 # APP CODE
 # =============================================================================
-APP_NAME = "LH Short Bot"
+APP_NAME = "Kestrel"
 APP_VERSION = "3.13.1"
 
 try:
@@ -24,7 +24,14 @@ def _base_dir():
 
 def _data_dir():
     root = os.environ.get("LOCALAPPDATA")
-    path = os.path.join(root, "LHShortBot") if root else os.path.join(os.path.expanduser("~"), ".lh_short_bot")
+    home = os.path.expanduser("~")
+    path, old = ((os.path.join(root, "Kestrel"), os.path.join(root, "LHShortBot")) if root
+                 else (os.path.join(home, ".kestrel"), os.path.join(home, ".lh_short_bot")))
+    if not os.path.isdir(path) and os.path.isdir(old):   # 2026-11-06: renamed to Kestrel - the data folder moves once
+        try:
+            os.rename(old, path)
+        except OSError:                                  # in use (an older copy of the app still open): keep using
+            path = old                                   # it - it moves on a later start
     os.makedirs(path, exist_ok=True)
     return path
 
@@ -45,8 +52,8 @@ ENV_SECRET = ("TZ_API_KEY_ID", "TZ_API_SECRET", "TZ_ACCOUNT_ID", "DISCORD_WEBHOO
               "ALPHAVANTAGE_API_KEY")
 ENV_ALIASES = {"TZ_API_SECRET_KEY": "TZ_API_SECRET", "TRADEZERO_API_KEY_ID": "TZ_API_KEY_ID",
                "TRADEZERO_API_SECRET": "TZ_API_SECRET", "DISCORD_WEBHOOK": "DISCORD_WEBHOOK_URL"}
-ENV_TEMPLATE = """# LH Short Bot - every credential in one file (3.11).
-# Keep this file next to LHShortBot.exe (or main.py). Never share it, never upload it.
+ENV_TEMPLATE = """# Kestrel - every credential in one file (3.11).
+# Keep this file next to Kestrel.exe (or main.py). Never share it, never upload it.
 # One KEY=VALUE per line, no quotes needed. An empty value = not set. Lines starting with # are comments.
 
 # TradeZero Developer API keys (paper keys trade the paper account, live keys the live account)
@@ -95,7 +102,7 @@ def env_path():
             return p
     p = os.path.join(_base_dir(), ENV_FILE_NAME)
     try:
-        probe = os.path.join(_base_dir(), ".lh_write_test")
+        probe = os.path.join(_base_dir(), ".kestrel_write_test")
         with open(probe, "w", encoding="utf-8") as fh:
             fh.write("x")
         os.remove(probe)
@@ -225,8 +232,7 @@ def env_status():
     return {"file": env_path(), "exists": os.path.isfile(env_path()),
             "set": [k for k in ENV_KEYS if d.get(k)], "missing": [k for k in ENV_SECRET[:2] + ("DISCORD_WEBHOOK_URL",)
                                                             if not d.get(k)]}
-STRAT = sys.modules.get(__name__)
-STRATEGY_SOURCE = "embedded (v16: bounce-zone + vacuum short)"
+STRATEGY_SOURCE = ""
 
 
 def _setup_logging():
@@ -245,47 +251,14 @@ def _setup_logging():
         lg.addHandler(fh)
 
 
-def _select_strategy():
-    """Embedded engine by default; optionally the lh_short_backtester.py next to the app."""
-    here = sys.modules[__name__]
-    if not USE_EXTERNAL_STRATEGY:
-        return here, "embedded (v16: bounce-zone + vacuum short)"
-    path = os.path.join(_base_dir(), EXTERNAL_STRATEGY_FILE)
-    if not os.path.exists(path):
-        return here, "embedded (external file not found)"
-    try:
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("lh_external_strategy", path)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        for k, v in (("VACUUM_ENABLED", False), ("VAC_ENTRY_START", "09:30"), ("VAC_LAST_ENTRY_TIME", "15:30"),
-                     ("VAC_PULLBACK_PCT", 5.0), ("VAC_EXIT", "EOD")):
-            if not hasattr(mod, k):                  # an older (v14) backtester file: bounce-zone only
-                setattr(mod, k, v)
-        return mod, f"external file: {os.path.basename(path)}"
-    except Exception as exc:
-        log.exception("external strategy failed to load")
-        return here, f"embedded (external file failed: {exc.__class__.__name__})"
-
-
-def jr_mode():
-    """True = the short side is the Jay-read short (SHORT_STRATEGY = "jay_read"); False = the parked v16 short."""
-    return str(SHORT_STRATEGY).strip().lower() != "v16"
-
-
 def jr_ready():
-    """Jay-read mode and jay_read_short.py loaded (3.13.0: or Jay-read 2)."""
-    return jr_mode() and (JR is not None or JR2 is not None)
-
-
-def sq_on():
-    """3.9.0: the max squeeze short runs next to the Jay-read short."""
-    return jr_mode() and bool(SQUEEZE_SHORT) and JR is not None and SQ is not None
+    """jay_read_short.py or jay_read_2_short.py loaded."""
+    return JR is not None or JR2 is not None
 
 
 def jr2_ready():
-    """3.13.0: Jay-read 2 loaded (jay_read_2_short.py) in Jay-read mode."""
-    return jr_mode() and JR2 is not None
+    """3.13.0: Jay-read 2 loaded (jay_read_2_short.py)."""
+    return JR2 is not None
 
 
 def jr2_on():
@@ -303,31 +276,24 @@ def jr_label():
 
 
 def jr_source():
-    if not jr_mode():
-        return None
     if jr2_ready():
         txt = f"Jay-read 2 v{getattr(JR2, '__version__', '?')} ({os.path.basename(getattr(JR2, '__file__', 'jay_read_2_short.py'))})"
         if JR is not None and mode("jr") != "off":
             txt += f" + Jay-read v{getattr(JR, '__version__', '?')}"
-        return txt + (" + max squeeze short" if sq_on() else "") + " - v16 bounce-zone + vacuum parked"
+        return txt
     if JR is None:
-        return f"Jay-read short NOT LOADED ({JR_IMPORT_ERROR}) - no shorts; v16 parked"
-    txt = f"Jay-read short v{getattr(JR, '__version__', '?')} ({os.path.basename(getattr(JR, '__file__', JAY_READ_FILE))})"
-    if sq_on():
-        txt += f" + max squeeze short ({os.path.basename(getattr(SQ, '__file__', SQUEEZE_FILE))})"
-    elif SQUEEZE_SHORT:
-        txt += f" - max squeeze short NOT LOADED ({SQ_IMPORT_ERROR})"
-    return txt + " - v16 bounce-zone + vacuum parked"
+        return f"Jay-read short NOT LOADED ({JR_IMPORT_ERROR}) - no shorts"
+    return f"Jay-read short v{getattr(JR, '__version__', '?')} ({os.path.basename(getattr(JR, '__file__', JAY_READ_FILE))})"
 
 
 # -----------------------------------------------------------------------------
 # 3.10 TRADING MODE per strategy: "trading" = places orders, "alert" = signals to Discord only, "off" = not traded or
 # posted. Picked in the app (menu -> Trading mode), saved in settings.json ("modes"), no rebuild needed. The constants
-# ALERT_ONLY / SQUEEZE_ALERT_ONLY / LONG_PREMARKET only give the start-up default until a mode is saved.
+# ALERT_ONLY / LONG_PREMARKET only give the start-up default until a mode is saved.
 # -----------------------------------------------------------------------------
-MODE_KEYS = ("long", "jr2", "jr", "sq")   # 3.13.0: + jr2 (Jay-read 2)
+MODE_KEYS = ("long", "jr2", "jr")   # 3.13.0: + jr2 (Jay-read 2)
 MODE_VALUES = ("trading", "alert", "off")
-MODE_NAMES = {"long": "Premarket long", "jr2": "Jay-read 2 short", "jr": "Jay-read short v1.2", "sq": "Max squeeze short"}
+MODE_NAMES = {"long": "Premarket long", "jr2": "Jay-read 2 short", "jr": "Jay-read short v1.2"}
 MODE_TEXT = {"trading": "Trading", "alert": "Alert only", "off": "Off"}
 MODES = {}                         # the modes picked in the app (saved); a strategy not in it uses its constant
 
@@ -335,7 +301,7 @@ MODES = {}                         # the modes picked in the app (saved); a stra
 def default_modes():
     jr12 = JR_V12_DEFAULT_MODE if JR_V12_DEFAULT_MODE in MODE_VALUES else ("alert" if ALERT_ONLY else "trading")
     return {"long": "trading" if LONG_PREMARKET else "off", "jr2": "alert" if JR2_ALERT_ONLY else "trading",
-            "jr": jr12, "sq": ("alert" if SQUEEZE_ALERT_ONLY else "trading") if SQUEEZE_SHORT else "off"}
+            "jr": jr12}
 
 
 def set_modes(saved=None):
@@ -359,25 +325,22 @@ def mode(key):
 
 
 def setup_mode(setup):
-    """The mode of a short setup ("squeeze" = the max squeeze short, else the Jay-read short)."""
-    if str(setup or "").startswith("jr2"):          # 3.13.0: Jay-read 2 (gapper / spiker)
-        return mode("jr2")
-    return mode("sq" if setup == "squeeze" else "jr")
+    """The mode of a short setup (Jay-read 2 gapper / spiker, else Jay-read v1.2)."""
+    return mode("jr2") if str(setup or "").startswith("jr2") else mode("jr")
 
 
 def modes_text(short=False):
     """'Premarket long: Trading - Jay-read short: Alert only - ...' (Discord, status)."""
-    keys = [k for k in MODE_KEYS if (k != "sq" or sq_on() or SQUEEZE_SHORT) and (k != "jr2" or JR2 is not None)]
+    keys = [k for k in MODE_KEYS if k != "jr2" or JR2 is not None]
     if short:
-        nm = {"long": "Long", "jr2": "Jay-read 2", "jr": "Jay-read v1.2", "sq": "Squeeze"}
+        nm = {"long": "Long", "jr2": "Jay-read 2", "jr": "Jay-read v1.2"}
         return "  ·  ".join(f"{nm[k]}: {MODE_TEXT[mode(k)].upper() if mode(k) != 'trading' else 'ON'}" for k in keys)
     return "  ·  ".join(f"{MODE_NAMES[k]}: {MODE_TEXT[mode(k)]}" for k in keys)
 
 
 def not_trading():
     """The strategies that are NOT placing orders: [(key, mode)]."""
-    keys = [k for k in MODE_KEYS if (k != "sq" or sq_on()) and (k != "long" or LONG_PREMARKET)
-            and (k != "jr2" or JR2 is not None)]
+    keys = [k for k in MODE_KEYS if (k != "long" or LONG_PREMARKET) and (k != "jr2" or JR2 is not None)]
     return [(k, mode(k)) for k in keys if mode(k) != "trading"]
 
 
@@ -389,21 +352,14 @@ def strategy_label():
     parts = []
     if LONG_PREMARKET:
         parts.append("Premarket long" if LP is not None else "Premarket long NOT LOADED")
-    if not jr_mode():
-        parts.append(f"short: {STRATEGY_SOURCE}")
-    else:
-        if JAY_READ_2:                               # 3.13.0
-            parts.append("Jay-read 2" + {"alert": " (alert only)", "off": " (off)"}.get(mode("jr2"), "")
-                         if JR2 is not None else "Jay-read 2 NOT LOADED")
-        if JR is None:
-            parts.append("Jay-read short NOT LOADED")
-        elif mode("jr") != "off" or not JAY_READ_2:
-            parts.append(f"Jay-read short v{getattr(JR, '__version__', '?')}"
-                         + {"alert": " (alert only)", "off": " (off)"}.get(mode("jr"), ""))
-        if sq_on():
-            parts.append("Max squeeze short" + {"alert": " (alert only)", "off": " (off)"}.get(mode("sq"), ""))
-        elif SQUEEZE_SHORT:
-            parts.append("Max squeeze short NOT LOADED")
+    if JAY_READ_2:                                   # 3.13.0
+        parts.append("Jay-read 2" + {"alert": " (alert only)", "off": " (off)"}.get(mode("jr2"), "")
+                     if JR2 is not None else "Jay-read 2 NOT LOADED")
+    if JR is None:
+        parts.append("Jay-read short NOT LOADED")
+    elif mode("jr") != "off" or not JAY_READ_2:
+        parts.append(f"Jay-read short v{getattr(JR, '__version__', '?')}"
+                     + {"alert": " (alert only)", "off": " (off)"}.get(mode("jr"), ""))
     return " + ".join(parts)
 
 
@@ -432,9 +388,6 @@ def jr_info():
             "lockAfter": JR.LOCK_AFTER_PCT, "lockStop": JR.LOCK_STOP_PCT, "eodChart": JR.EOD_COVER_TIME,
             "lockText": JR.lock_text(JR.LOCK_STOP_PCT), "ver": getattr(JR, "__version__", ""),
             "alertOnly": mode("jr") != "trading", "eod": JR_EOD_COVER_TIME,
-            "sq": ({"up": SQ.MIN_UP_PCT, "squeeze": SQ.SQUEEZE_PCT, "swing": SQ.SWING_PCT, "near": SQ.NEAR_TOP_PCT,
-                    "stop": SQ.STOP_OVER_TOP_PCT, "start": SQ.SIGNAL_START, "end": SQ.SIGNAL_END,
-                    "alertOnly": mode("sq") != "trading"} if sq_on() else None),
             "jr2": jr2_info(), "v12": mode("jr") != "off"}
 
 
@@ -461,32 +414,20 @@ def jr_cfg():
     return JR.settings(EOD_COVER_TIME=JR_EOD_COVER_TIME)
 
 
-def sq_cfg():
-    """3.9.0: the max squeeze settings for the live bot: the backtested values, the EOD cover from JR_EOD_COVER_TIME."""
-    return SQ.settings(EOD_COVER_TIME=JR_EOD_COVER_TIME)
-
-
 def make_book(sym, prior, live=True):
-    """3.9.0: the short strategies of one symbol for one day - a ShortBook (Jay-read + max squeeze, one position at a
-    time; the max squeeze part only when sq_on()), or without max_squeeze_short.py the JayReadShort alone. Both have the
-    same API. live=False = the backtest view of the chart (fills from the candles, cover 15:55).
-    3.13.0: Jay-read 2 first, then Jay-read v1.2 (only when its mode is not Off), then the max squeeze - all in one
-    ShortBook (max_squeeze_short.ShortBook: one short per stock, a stop-out of one ends the stock for all)."""
+    """The short strategies of one symbol for one day. Jay-read 2 on: a book (jay_read_2_short.make_book - one short per
+    stock, a stop-out ends the stock) with Jay-read 2 first and Jay-read v1.2 when its mode is not Off; else Jay-read
+    v1.2 alone. live=False = the backtest view of the chart (fills from the candles, cover 15:55)."""
     if jr2_on():
         parts = [JR2.JayRead2Short(sym, prior, cfg=jr2_cfg() if live else None, simulate_fills=not live)]
         if JR is not None and mode("jr") != "off":
             parts.append(JR.JayReadShort(sym, prior, cfg=jr_cfg() if live else None, simulate_fills=not live))
-        if SQ is not None and sq_on() and mode("sq") != "off":
-            parts.append(SQ.MaxSqueezeShort(sym, prior, cfg=sq_cfg() if live else None, simulate_fills=not live))
         return JR2.make_book(sym, prior, parts)
-    if SQ is not None:
-        return SQ.ShortBook(sym, prior, jr_cfg=jr_cfg() if live else None, sq_cfg=sq_cfg() if live else None,
-                            simulate_fills=not live, squeeze=sq_on())
     return JR.JayReadShort(sym, prior, cfg=jr_cfg() if live else None, simulate_fills=not live)
 
 
 def jr_part(book, setup):
-    """The strategy object behind a setup (the book's Jay-read or max squeeze part)."""
+    """The strategy object behind a setup (the book's Jay-read 2 or Jay-read v1.2 part)."""
     return book.part(setup) if hasattr(book, "part") else book
 
 
@@ -519,12 +460,6 @@ def jr_hm(t):
 
 def jr_read_text(s):
     """Jay's read of a signal in one paragraph (Discord, app log, chart note)."""
-    if s.get("setup") == "squeeze":                     # 3.9.0: the max squeeze short
-        return (f"Stock +{s['up'] * 100:.0f}%, ${s['dollar'] / 1e6:,.0f}M traded. Last swing high it broke (where the "
-                f"average short went in) {_fp(s['level'])} at {jr_hm(s['level_time'])}; squeezed "
-                f"+{s['squeeze'] * 100:.0f}% over it to {_fp(s['top'])} at {jr_hm(s['top_time'])}. Red candle at the top - "
-                f"close {_fp(s['close'])}, VWAP {_fp(s['vwap'])} ({s['vs_vwap'] * 100:+.0f}%). Stop {_fp(s['stop'])} (the "
-                f"top +{SQ.STOP_OVER_TOP_PCT:g}%), no lock.")
     if str(s.get("setup") or "").startswith("jr2"):     # 3.13.0: Jay-read 2
         basis = {"hod": "high of day", "rh": "regular-hours high", "bh": "bounce high"}.get(s.get("stop_basis"), "high")
         return (f"{JR_SETUP_NAME.get(s['setup'], 'Jay-read 2')}, {s['kind']}: stock +{s['up'] * 100:.0f}%, "
@@ -547,9 +482,9 @@ def jr_read_text(s):
 
 
 def jr_eng_info(frame, has_rth, prior):
-    """What the bot shows / needs from the day when the v16 engine is parked: HOD, VWAP, gap, volume (no v16 signals)."""
+    """What the bot shows / needs from the day: HOD, VWAP (from 04:00), gap, volume."""
     n = len(frame)
-    out = {"pending": None, "vac": None, "vac_armed": None, "trades": [], "hod": None, "gap": None, "gapOk": False,
+    out = {"trades": [], "hod": None, "gap": None, "gapOk": False,
            "block": "" if has_rth else "pre-market", "vol": 0.0, "bars": n, "vwap": None, "close": None}
     if not n:
         return out
@@ -570,7 +505,7 @@ class K:
     rth_s = 9 * 3600 + 30 * 60
     rth_e = 16 * 3600
     eod_s = 15 * 3600 + 55 * 60
-    include_pm = True
+    include_pm = True               # 3.15: VWAP always from 04:00 (one VWAP everywhere: chart, Discord, strategies)
 
 
 def _secs(hhmm):
@@ -579,10 +514,9 @@ def _secs(hhmm):
 
 
 def _init_constants():
-    K.rth_s = _secs(STRAT.RTH_START)
-    K.rth_e = _secs(STRAT.RTH_END)
-    K.eod_s = _secs(STRAT.EOD_COVER_TIME)
-    K.include_pm = bool(STRAT.VWAP_INCLUDE_PREMARKET)
+    K.rth_s = _secs(RTH_START)
+    K.rth_e = _secs(RTH_END)
+    K.eod_s = _secs(EOD_COVER_TIME)
 
 
 # -----------------------------------------------------------------------------
@@ -634,6 +568,18 @@ def _fmt_shares(v):
         if v >= div:
             return f"{v / div:g}{suf}"
     return f"{v:g}"
+
+
+def scan_keep(vol, cap):
+    """3.15: the scanner filter (cards / list and the short auto-scanner): at least SCAN_MIN_DAY_VOLUME shares traded today
+    and a market cap (shares x price) not over SCAN_MAX_MARKET_CAP_USD. An unknown market cap is kept."""
+    mv = globals().get("SCAN_MIN_DAY_VOLUME") or 0
+    mc = globals().get("SCAN_MAX_MARKET_CAP_USD")
+    if mv and (not vol or vol < mv):
+        return False
+    if mc and cap and cap > mc:
+        return False
+    return True
 
 
 def _num(x):
@@ -791,9 +737,7 @@ def make_quote(st):
     return {
         "last": _f(c), "prior": _f(prior), "chg": _f(c - prior) if prior else None, "up": _f(up, 2),
         "hod": _f(hod), "off": _f(off, 2), "vwap": _f(pv / vv) if vv > 0 else None, "vol": _f(vol, 0),
-        "volOk": (bool(vol >= STRAT.MIN_DAY_VOLUME) if getattr(STRAT, "MIN_DAY_VOLUME", 0) else None),
-        "gap": _f(gap, 2), "gapOk": (bool(gap >= STRAT.MIN_GAP_PCT) if gap is not None else None),
-        "inZone": bool(off is not None and STRAT.ZONE_NEAR_PCT <= off <= STRAT.ZONE_FAR_PCT),
+        "gap": _f(gap, 2),
         "halted": bool(getattr(st, "halted", False)),
         "bid": _f((getattr(st, "ba", None) or (None, None))[0]), "ask": _f((getattr(st, "ba", None) or (None, None))[1]),
     }
@@ -804,7 +748,7 @@ def make_quote(st):
 # -----------------------------------------------------------------------------
 def make_frame(st, a, b):
     rows = st.bars[a:b]
-    times = pd.to_datetime(np.asarray(st.tc[a:b], dtype="int64"), unit="s").tz_localize(STRAT.ET)
+    times = pd.to_datetime(np.asarray(st.tc[a:b], dtype="int64"), unit="s").tz_localize(ET_NAME)
     o, h, l, c, v = zip(*(bar_ohlcv(x) for x in rows))
     return pd.DataFrame({"time": times, "open": o, "high": h, "low": l, "close": c, "volume": v})
 
@@ -843,91 +787,6 @@ def _ts_epoch(ts):
         return None
 
 
-def summarize(bt, job):
-    tc = job["tc"]
-    n = len(tc)
-    live = job["live"]
-    scr = STRAT.SCRATCH_R
-    trades, markers = [], []
-    for tr in bt.trades:
-        ei, xi, pi = tr["entry_idx"], tr["exit_idx"], tr["partial_idx"]
-        # the engine force-closes any open trade at the last bar it is given;
-        # during the live session that is the forming candle, so the trade is still open
-        is_open = live and tr["exit_reason"] == "EOD" and (tc[xi] % 86400) < K.eod_s
-        shares = max(1, int(tr["shares"]))
-        pshares = max(0, min(shares - 1, int(round(shares * STRAT.PARTIAL_PCT)))) if pi >= 0 else 0
-        stop_now = tr["stop_path"][-1][1] if tr["stop_path"] else tr["stop"]
-        item = {
-            "day": job["day"], "n": tr["n"], "setup": tr["setup"], "note": tr["note"],
-            "t": tc[ei], "sigT": _ts_epoch(tr["signal_time"]),
-            "entry": _f(tr["entry"]), "stop": _f(tr["stop"]), "stopNow": _f(stop_now), "risk": _f(tr["risk_pct"], 2),
-            "t1": _f(tr["t1"]), "t1k": tr["t1_kind"], "t2": _f(tr["t2"]),
-            "pT": tc[pi] if pi >= 0 else None, "pPx": _f(tr["partial_px"]) if pi >= 0 else None,
-            "xT": None if is_open else tc[xi], "xPx": None if is_open else _f(tr["exit"]),
-            "reason": "OPEN" if is_open else tr["exit_reason"], "R": _f(tr.get("R_net", tr["R"]), 3), "open": bool(is_open),
-            "pfrac": pshares / shares, "grade": tr.get("grade", ""), "leg": tr.get("leg"),
-            "net": _f(tr.get("pnl_pct_net"), 2), "fee": tr.get("fee_pct", 0.0),
-            "top": _f(tr.get("top")), "dip": _f(tr.get("dip_pct"), 1), "zv": _f(tr.get("zone_vs_vwap_pct"), 1),
-        }
-        trades.append(item)
-        markers.append({"time": tc[ei], "position": "aboveBar", "color": "#f23645", "shape": "arrowDown",
-                        "text": f"S{tr['n']} {tr['setup']}" + (f" {tr['grade']}" if tr.get("grade") else "")})
-        if pi >= 0:
-            markers.append({"time": tc[pi], "position": "belowBar", "color": "#089981", "shape": "arrowUp",
-                            "text": "T1"})
-        if not is_open:
-            base = tr["exit_reason"].replace(" (gap)", "")
-            markers.append({"time": tc[xi], "position": "belowBar", "color": EXIT_COLORS.get(base, "#9598a1"),
-                            "shape": "arrowUp", "text": f"{tr['exit_reason']} {tr.get('R_net', tr['R']):+.2f}R"})
-    skips, skip_markers = [], []
-    for s in bt.skipped:
-        i = s["idx"]
-        if live and i >= n - 1:
-            continue                       # decided on the forming candle - not final yet
-        skips.append({"t": tc[i], "setup": s["setup"], "reason": s["reason"], "px": _f(s["price"])})
-        skip_markers.append({"time": tc[i], "position": "aboveBar", "color": "rgba(149,152,161,0.85)",
-                             "shape": "circle", "text": "", "size": 0.6})
-    rs = [t["R"] or 0.0 for t in trades if not t["open"]]
-    gap = getattr(bt, "gap_pct", float("nan"))
-    stats = {"trades": len(trades), "wins": sum(1 for r in rs if r >= scr),
-             "losses": sum(1 for r in rs if r <= -scr), "R": _f(sum(rs), 2), "open": sum(1 for t in trades if t["open"]),
-             "gap": _f(gap, 1) if gap == gap else None, "gapOk": bool(getattr(bt, "gap_ok", False))}
-    # bounce zone: the short limit resting for the next / forming candle (live only)
-    armed = None
-    pend = getattr(bt, "pending", None)
-    if live and pend is not None and "trigger" in pend and 0 <= pend["idx"] < n:
-        armed = {"t": tc[pend["idx"]], "setup": pend["sig"].setup, "trigger": _f(pend["trigger"]),
-                 "zoneHi": _f(pend.get("zone_hi")), "stop": _f(pend["sig"].stop), "top": _f(pend.get("top")),
-                 "dip": _f(pend.get("dip_pct"), 1), "ext": _f(pend.get("ext"), 1)}
-    stats["armed"] = armed
-    levels = []
-    if job["latest"] and SHOW_DAY_LEVELS:
-        if bt.hod and bt.hod > 0 and not math.isinf(bt.hod):
-            levels.append({"price": _f(bt.hod), "color": "#9598a1", "style": "dot", "title": "HOD"})
-        if bt.pm_high == bt.pm_high and bt.hod and abs(bt.pm_high - bt.hod) / bt.hod > 0.01:
-            levels.append({"price": _f(bt.pm_high), "color": "#2962ff", "style": "dash", "title": "PM high"})
-        if job["prior"]:
-            levels.append({"price": _f(job["prior"]), "color": "#5d606b", "style": "dot", "title": "Prev close"})
-    if job["latest"]:
-        if armed:
-            levels.append({"price": armed["zoneHi"], "color": "#ce93d8", "style": "dot", "title": "Zone 10%"})
-            levels.append({"price": armed["trigger"], "color": "#ff9800", "style": "dash", "title": "Short limit 12%"})
-            levels.append({"price": armed["stop"], "color": "#f23645", "style": "dot", "title": "Stop if filled"})
-        if live and getattr(bt, "vac_armed", False) and getattr(bt, "vac_peak_idx", -1) >= 0:
-            levels.append({"price": _f(bt.vac_peak), "color": "#e040fb", "style": "dot", "title": "Vacuum peak"})
-            levels.append({"price": _f(bt.vac_peak * (1 - STRAT.VAC_PULLBACK_PCT / 100.0)), "color": "#e040fb",
-                           "style": "dash", "title": "Vacuum: short below"})
-        for t in trades:
-            if t["open"]:
-                levels.append({"price": t["entry"], "color": "#d1d4dc", "style": "solid", "title": f"S{t['n']} entry"})
-                levels.append({"price": t["stopNow"], "color": "#f23645", "style": "dash", "title": "Stop"})
-                levels.append({"price": t["top"], "color": "#9598a1", "style": "dot", "title": "Top"})
-                levels.append({"price": t["t1"], "color": "#089981", "style": "dot",
-                               "title": "VWAP at entry" if t["setup"] == "VACUUM" else "Dip low (guide)"})
-    return {"day": job["day"], "n": n, "live": live, "latest": job["latest"], "trades": trades,
-            "markers": markers, "skips": skips, "skip_markers": skip_markers, "levels": levels, "stats": stats}
-
-
 JR_EXIT_NAME = {"STOP": "Stop", "LOCK": "Lock", "EOD": "EOD", "END": "EOD"}
 
 
@@ -936,7 +795,7 @@ def summarize_jr(job):
     the candles) on the day's closed candles - the same view as the backtester. Same output shape as summarize()."""
     tc, df, live = job["tc"], job["df"], job["live"]
     n = len(tc)
-    scr = STRAT.SCRATCH_R
+    scr = SCRATCH_R
     trades, markers, skips, skip_markers, levels = [], [], [], [], []
     stats = {"trades": 0, "wins": 0, "losses": 0, "R": 0.0, "open": 0, "gap": None, "gapOk": False, "armed": None,
              "up": None, "dollar": None, "jr": JR is not None}
@@ -944,7 +803,7 @@ def summarize_jr(job):
     if (JR is None and JR2 is None) or not prior or not n:
         return {"day": job["day"], "n": n, "live": live, "latest": job["latest"], "trades": trades, "markers": markers,
                 "skips": skips, "skip_markers": skip_markers, "levels": levels, "stats": stats}
-    s = make_book(job["sym"], prior, live=False)            # 3.9.0: Jay-read + max squeeze, backtested settings
+    s = make_book(job["sym"], prior, live=False)            # backtested settings
     use = n - 1 if live else n                              # live: the last candle is still forming
     o, h, l, c, v = (df[x].to_numpy(float) for x in ("open", "high", "low", "close", "volume"))
     times = df["time"]
@@ -1021,17 +880,8 @@ def summarize_jr(job):
 
 
 def run_jobs(jobs):
-    if jr_mode():                               # 3.7.0: the Jay-read short (the v16 engine is parked)
-        return [summarize_jr(job) for job in jobs]
-    out = []
-    for job in jobs:
-        bt = STRAT.Backtest(job["sym"], job["date"], job["df"], job["prior"])
-        if any(is_rth(t) for t in job["tc"]):
-            bt.run()
-        else:                                   # pre-market only so far: no signals possible yet
-            bt.hod = float(job["df"]["high"].max())
-        out.append(summarize(bt, job))
-    return out
+    """The chart's strategy view of each day (Jay-read 2 / Jay-read in backtest mode on the candles)."""
+    return [summarize_jr(job) for job in jobs]
 
 
 # -----------------------------------------------------------------------------
@@ -1068,10 +918,10 @@ def load_chart_lib():
 # Settings
 # -----------------------------------------------------------------------------
 class Settings:
-    KEYS = ("ext", "skipped", "sound", "panel", "orders", "ordall", "olong")
+    KEYS = ("ext", "skipped", "sound", "panel", "orders", "ordall", "olong", "ts")   # 3.15: ts = Time & Sales open
     TIMEFRAMES = ("1", "2", "5", "15", "30", "D")
     SIZES = {"side": (0.15, 0.55), "scanh": (0.12, 0.88), "ordh": (0.10, 0.70), "newsw": (0.15, 0.75),   # right column / bot panel / orders panel
-             "wside": (0.12, 0.45)}                                                # 3.11: the watchlist (left) column
+             "wside": (0.12, 0.45), "tsw": (0.12, 0.45)}                          # 3.15: Time & Sales width (of the chart)                                                # 3.11: the watchlist (left) column
 
     def __init__(self):
         self.path = os.path.join(DATA_DIR, "settings.json")
@@ -1126,9 +976,9 @@ class Settings:
                     n = turso.journal_backfill(os.path.join(DATA_DIR, name), name)
                     if n:
                         log.info("journal %s: %d rows uploaded to Turso", name, n)
-                import lh_backtest
+                import kestrel_backtest
                 import turso_vault
-                vp = lh_backtest.settings().get("vault") or turso_vault.default_replica()
+                vp = kestrel_backtest.settings().get("vault") or turso_vault.default_replica()
                 nd, nh = turso_vault.pull(vp, lambda m: log.info("vault sync: %s", m))
                 if nd or nh:
                     log.info("vault replica %s: %d ticker-days, %d histories pulled from Turso", vp, nd, nh)
@@ -1436,7 +1286,7 @@ def journal_data(rng="month", month="", today=None, data_dir=None, tz_fills=None
     strat = []
     for k, nm in (("jr2", "Jay-read 2 short"), ("jr", "Jay-read short v1.2"), ("sq", "Max squeeze short"), ("long", "Premarket long")):
         g = [t for t in tr if t["strat"] == k]
-        if k == "sq" and not g and not sq_on():          # 3.14: the max squeeze is not in the bot - no empty row
+        if k == "sq" and not g:                          # max squeeze: backtest only - a row only for old journal trades
             continue
         gw = [t for t in g if t["net"] > 0]
         strat.append({"k": k, "name": nm, "n": len(g), "win": round(100.0 * len(gw) / len(g)) if g else None,
@@ -1475,7 +1325,7 @@ def older_jobs(sym, days, prior_of):
         if not prior or not cs:
             continue
         tc = [x[0] for x in cs]
-        times = pd.to_datetime(np.asarray(tc, dtype="int64"), unit="s").tz_localize(STRAT.ET)
+        times = pd.to_datetime(np.asarray(tc, dtype="int64"), unit="s").tz_localize(ET_NAME)
         o, h, l, c, v = (list(z) for z in zip(*((x[1], x[2], x[3], x[4], x[5]) for x in cs)))
         df = pd.DataFrame({"time": times, "open": o, "high": h, "low": l, "close": c, "volume": v})
         jobs.append({"sym": sym, "day": dn, "date": day_date(dn), "df": df, "tc": tc, "prior": prior,
@@ -1495,6 +1345,7 @@ class UiBridge:
         self.rows = {}
         self.quote_msg = None
         self.closed = False
+        self.tape = None                  # 3.15: Time & Sales (tape.py) - drawn with every push
 
     def on_loaded(self, *_):
         self.ready.set()
@@ -1523,11 +1374,19 @@ class UiBridge:
     def run(self):
         self.ready.wait()
         while not self.closed:
-            time.sleep(0.1)
+            tape = self.tape
+            time.sleep(0.03 if tape is not None and tape.fast() else 0.1)   # 3.15: ~30 ms while Time & Sales is live
             with self.lock:
                 calls, rows, quote = self.calls, self.rows, self.quote_msg
                 self.calls, self.rows, self.quote_msg = [], {}, None
             parts = list(calls)
+            if tape is not None:
+                try:
+                    tj = tape.drain_js()
+                    if tj:
+                        parts.append(tj.rstrip(";"))
+                except Exception:
+                    log.exception("time and sales push")
             if rows:
                 by_gen = {}
                 for gen, row in rows.values():
@@ -1586,88 +1445,6 @@ def _pm(x):
 
 
 
-def bot_engine(sym, frame, day, prior, has_rth, void=()):
-    """One run of the untouched v16 engine on today's CLOSED candles. Returns what the bot needs.
-    void = entries you cancelled in the orders panel ("B", top candle time) / ("V", "peak time-signal time"): the engine
-    treats them as never filled (no simulated position blocking the next setup; that bounce top stays used up). Keys are
-    candle times, so a candle reload cannot shift them."""
-    n = len(frame)
-    out = {"pending": None, "vac": None, "vac_armed": None, "trades": [], "hod": float(frame["high"].max()) if n else None,
-           "gap": None, "gapOk": False, "block": "", "vol": float(frame["volume"].sum()) if n else 0.0, "bars": n,
-           "vwap": None, "close": float(frame["close"].iloc[-1]) if n else None}
-    if n:
-        tp = (frame["high"] + frame["low"] + frame["close"]) / 3.0
-        vv = frame["volume"].sum()
-        out["vwap"] = float((tp * frame["volume"]).sum() / vv) if vv > 0 else None
-    if not has_rth:
-        out["block"] = "pre-market"
-        return out
-    bt = STRAT.Backtest(sym, day, frame, prior)
-    seen = {"vp": None}
-    ts = lambda i: calendar.timegm(frame["time"].iloc[i].timetuple())
-    if void:
-        void = set(void)
-        try_fill, vac_fill = bt._try_fill, bt._vac_fill
-
-        def try_fill_v(t):
-            p = bt.pending
-            try_fill(t)
-            pos = bt.pos
-            if pos is not None and p is not None and pos.entry_idx == t and ("B", ts(int(p["top_idx"]))) in void:
-                bt.pos, bt.ntr = None, bt.ntr - 1        # you cancelled this one: no position (the top stays used)
-                bt.log_skip(t, "cancelled by you - setup skipped", p["trigger"])
-
-        def vac_fill_v(t):
-            p = bt.vac_pending
-            vac_fill(t)
-            pos = bt.pos
-            if (pos is not None and p is not None and pos.entry_idx == t
-                    and ("V", f"{ts(p['peak_idx'])}-{ts(p['idx'])}") in void):
-                bt.pos, bt.vac_ntr = None, bt.vac_ntr - 1
-        bt._try_fill, bt._vac_fill = try_fill_v, vac_fill_v
-    if hasattr(bt, "_vac_update"):
-        vac_update = bt._vac_update
-
-        def spy(t):                                  # the engine clears vac_pending when run() ends: keep the last one
-            vac_update(t)
-            seen["vp"] = bt.vac_pending
-        bt._vac_update = spy
-    bt.run()
-    p = bt.pending
-    if p is not None and "trigger" in p:
-        out["pending"] = {"trigger": float(p["trigger"]), "zone_hi": float(p["zone_hi"]), "stop": float(p["sig"].stop),
-                          "top": float(p["top"]), "dip": float(p.get("dip_pct", 0.0)), "ext": float(p.get("ext", 0.0)),
-                          "top_t": ts(int(p["top_idx"])) if p.get("top_idx", -1) >= 0 else None}
-    vp = seen["vp"]
-    if vp is not None:                               # vacuum short decided at the last closed candle: short at the next open
-        quiet = float(frame["volume"].iloc[vp["idx"] + 1:].sum()) <= 0     # only halted candles since the signal
-        out["vac"] = {"key": f"{vp['peak_idx']}-{vp['idx']}", "peak": float(vp["peak"]), "stop": float(vp["sig"].stop),
-                      "trigger": float(vp["trigger"]), "ext": float(vp["ext"]), "t": ts(vp["idx"]), "peak_t": ts(vp["peak_idx"]),
-                      "fresh": quiet, "vkey": f"{ts(vp['peak_idx'])}-{ts(vp['idx'])}"}
-    if getattr(bt, "vac_armed", False) and bt.vac_peak_idx >= 0:
-        out["vac_armed"] = {"peak": float(bt.vac_peak), "t": ts(bt.vac_arm_idx), "arm_idx": int(bt.vac_arm_idx),
-                            "trigger": float(bt.vac_peak * (1 - STRAT.VAC_PULLBACK_PCT / 100.0))}
-    out["vac_skip"] = None
-    for sk in getattr(bt, "skipped", []):
-        if sk.get("setup") == getattr(STRAT, "VAC_SETUP", "VACUUM") and sk["idx"] == n - 1:
-            out["vac_skip"] = {"key": f"{sk['idx']}", "reason": str(sk["reason"]).replace("vacuum signal - ", ""),
-                               "price": float(sk["price"]), "t": ts(sk["idx"])}
-    for tr in bt.trades:
-        out["trades"].append({"setup": tr["setup"], "top": float(tr["top"]), "entry": float(tr["entry"]),
-                              "stop": float(tr["stop"]), "t": calendar.timegm(tr["entry_time"].timetuple()),
-                              "reason": tr["exit_reason"], "open": tr["exit_reason"] == "EOD" and tr["exit_idx"] == n - 1})
-    out["hod"] = float(bt.hod) if bt.hod == bt.hod and not math.isinf(bt.hod) else out["hod"]
-    gap = getattr(bt, "gap_pct", float("nan"))
-    out["gap"] = gap if gap == gap else None
-    out["gapOk"] = bool(bt.gap_ok)
-    out["block"] = bt.block_reason or ""
-    if len(bt.cumvol):
-        out["vol"] = float(bt.cumvol[-1])
-    if len(bt.vwap) and bt.vwap[-1] == bt.vwap[-1]:
-        out["vwap"] = float(bt.vwap[-1])
-    return out
-
-
 class BotSym:
     def __init__(self, sym):
         self.sym = sym
@@ -1691,7 +1468,6 @@ class BotSym:
         self.last_flow = 0.0            # last "stock flow" picture sent to Discord (monotonic)
         self.cover = None               # {"coid", "reason", "tries"}
         self.busy = False
-        self.skip_top = {}              # top -> reason: do not retry this top (locate too expensive, order rejected...)
         self.trades = []                # finished real trades today
         self.next_poll = 0.0
         self.status, self.kind = "Waiting for IB Gateway...", "dim"
@@ -1701,6 +1477,8 @@ class BotSym:
         self.halt = None                # 3.12: the halt now: {"t", "hms", "px", "dir", "src", "resumed", ...}
         self.stop_guard = None          # 3.12: the stop TradeZero rejected / cancelled: put back / covered (see _guard_stop)
         self.vol_seen = None            # 3.12: IB's day volume at the last tick (rising = real trades, never indications)
+        self.halt_flag_clear = True     # 3.15: IB's halt flag was seen down since the last halt began (a flag still up from
+        self.last_trade_mono = 0.0      # that halt is not a new halt) / time of the last real trade (monotonic)
         self.bid = self.ask = None      # 3.12: the quote (the reopen check)
         self.reset_day()
 
@@ -1715,7 +1493,6 @@ class BotSym:
         self.jr_ctx = None              # the read right now: momentum broke (for the pre-locate and the status line)
         self.jr_plan = None             # what the flow picture shows for a signal
         self.jr_virtual = None          # ALERT_ONLY: the short the bot WOULD hold (followed on the candles like the backtest)
-        self.sq_ctx = None              # 3.9.0: the max squeeze read right now: a squeeze is on (pre-locate, status line)
         self.hunt = None                # 3.9.0: the locate search ("pre" before a signal / "entry" after one)
         self.loc_note = ""              # 3.9.0: the last locate offer seen (status line, messages)
         self.pre_req = None             # pre-locate request (stock stretched above VWAP)
@@ -1726,9 +1503,6 @@ class BotSym:
         self.locate_cost = 0.0          # $ paid for locates today
         self.etb = None
         self.notes = set()              # one-time notes already sent today
-        self.used_vac = set()           # vacuum signals already acted on
-        self.void = set()               # entries you cancelled: ("B", top candle) / ("V", vacuum key) - engine skips them
-        self.seen_armed = set()         # bounce limits / vacuum traps already reported
         self.last_img = 0.0
         self.eod_alerted = set()
         self.loaded_msg = False
